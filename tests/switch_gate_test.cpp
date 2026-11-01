@@ -23,6 +23,7 @@
 #include <random>
 #include <set>
 #include <sstream>
+#include <mutex>
 #include <thread>
 
 #include "core/contracts/ipc.h"
@@ -49,6 +50,17 @@ std::vector<Check> g_checks;
 std::string g_phase;
 std::map<std::string, std::vector<double>> g_samples;  // latency series, ms
 std::set<HWND> g_externalNew;                           // windows other processes created mid-run
+std::mutex g_destroyedMutex;                            // guards g_destroyed and g_externalLost
+std::set<HWND> g_destroyed;                             // EVENT_OBJECT_DESTROY seen during the run
+std::map<HWND, std::string> g_externalLost;             // foreign windows that vanished on their own
+HWND g_fgBefore = nullptr;                              // focus window before the cycle (Velora restores focus to it)
+
+void CALLBACK OnDestroyEvent(HWINEVENTHOOK, DWORD, HWND h, LONG obj, LONG child, DWORD, DWORD) {
+    if (h && obj == OBJID_WINDOW && child == CHILDID_SELF) {
+        std::lock_guard<std::mutex> lock(g_destroyedMutex);
+        g_destroyed.insert(h);
+    }
+}
 
 void Record(const std::string& name, bool ok, const std::string& detail = {}) {
     g_checks.push_back({g_phase, name, ok, detail});
@@ -169,12 +181,16 @@ private:
         ShowWindow(minimized, SW_SHOWMINNOACTIVE);
         apps_.push_back(minimized);
 
+        // Out-of-context hook, delivered through this thread's message loop.
+        HWINEVENTHOOK hook = SetWinEventHook(EVENT_OBJECT_DESTROY, EVENT_OBJECT_DESTROY, nullptr, OnDestroyEvent, 0, 0,
+                                             WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS);
         SetEvent(ready_);
         MSG m;
         while (GetMessageW(&m, nullptr, 0, 0) > 0) {
             TranslateMessage(&m);
             DispatchMessageW(&m);
         }
+        if (hook) UnhookWinEvent(hook);
         for (HWND a : apps_) DestroyWindow(a);
         for (HWND t : trays_) DestroyWindow(t);
         DestroyWindow(control_);
@@ -239,7 +255,15 @@ std::string DiffWindows(const WinMap& a, const WinMap& b) {
     std::ostringstream d;
     for (const auto& [h, w] : a) {
         auto it = b.find(h);
-        if (it == b.end()) { d << "lost " << h << " (" << WideToUtf8(w.cls) << ") "; continue; }
+        if (it == b.end()) {
+            // Attribution: Velora causes the loss of its own test windows, and calls a window API
+            // (SetForegroundWindow) on the one that had focus. It never terminates a foreign process,
+            // so any other foreign window that vanished did so on its own: logged, not failed.
+            if (w.pid == GetCurrentProcessId() || h == g_fgBefore) { d << "lost " << h << " (" << WideToUtf8(w.cls) << ") "; continue; }
+            std::lock_guard<std::mutex> lock(g_destroyedMutex);
+            g_externalLost[h] = WideToUtf8(w.cls) + " pid " + std::to_string(w.pid) + (g_destroyed.count(h) ? ", destroyed by its owner" : ", no destroy event (hidden?)");
+            continue;
+        }
         const WinInfo& n = it->second;
         if (n.cls != w.cls || n.visible != w.visible || n.iconic != w.iconic || n.zoomed != w.zoomed)
             d << "changed " << h << " (" << WideToUtf8(w.cls) << ") vis " << w.visible << "->" << n.visible << " ";
@@ -402,6 +426,7 @@ void PhaseCycles() {
     for (int i = 0; i < g_cycles; ++i) {
         ResetWorld();
         WinMap before = SnapshotWindows();
+        g_fgBefore = GetForegroundWindow();
         RECT workBefore = PrimaryWorkArea();
         bool good = true;
         auto fail = [&](const std::string& what) { good = false; Record("cycle " + std::to_string(i) + ": " + what, false); };
@@ -449,6 +474,7 @@ void PhaseKills() {
     for (int i = 0; i < g_kills; ++i) {
         ResetWorld();
         WinMap before = SnapshotWindows();
+        g_fgBefore = GetForegroundWindow();
         RECT workBefore = PrimaryWorkArea();
         Session s = StartShell();
         if (s.enterMs < 0) { Record("kill " + std::to_string(i) + ": enter", false); continue; }
@@ -951,6 +977,55 @@ void PhaseRestoreCorrectness() {
     ResetWorld();  // trays visible again, debris removed
 }
 
+// ------------------------------------------------------------- attribution of lost windows
+
+constexpr wchar_t kSelfDestroyClass[] = L"VeloraGateSelfDestroy";
+
+// `switch_gate_test --selfdestroy-window`: a foreign process that shows a window and destroys it itself.
+int SelfDestroyingWindow() {
+    WNDCLASSEXW wc{sizeof wc};
+    wc.lpfnWndProc = DefWindowProcW;
+    wc.hInstance = GetModuleHandleW(nullptr);
+    wc.lpszClassName = kSelfDestroyClass;
+    RegisterClassExW(&wc);
+    HWND w = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, kSelfDestroyClass, L"self-destroying", WS_POPUP, -18000, -18000, 200, 100,
+                             nullptr, nullptr, wc.hInstance, nullptr);
+    ShowWindow(w, SW_SHOWNOACTIVATE);
+    Sleep(800);
+    DestroyWindow(w);
+    return 0;
+}
+
+void PhaseAttribution() {
+    g_phase = "attribution";
+    ResetWorld();
+    wchar_t self[MAX_PATH];
+    GetModuleFileNameW(nullptr, self, MAX_PATH);
+    Proc helper = Spawn(self, L"--selfdestroy-window");
+    HWND w = nullptr;
+    PollUntil([&] { return (w = FindWindowW(kSelfDestroyClass, nullptr)) != nullptr; }, 3000);
+    WinMap before = SnapshotWindows();
+    EXPECT(w && before.count(w), "foreign fake window present in the snapshot");
+    EXPECT(WaitExit(helper.h, 5000), "helper destroyed its window and exited on its own");
+    Sleep(200);  // WinEvents are delivered asynchronously
+    g_externalLost.clear();
+    std::string d = DiffWindows(before, SnapshotWindows());
+    EXPECT(d.empty(), "a self-destroyed foreign window is not a Velora failure: " + d);
+    EXPECT(g_externalLost.count(w) == 1 && g_externalLost[w].find("destroyed by its owner") != std::string::npos,
+           "logged as external with the destroy event seen: " + (g_externalLost.count(w) ? g_externalLost[w] : std::string("(not logged)")));
+    g_externalLost.clear();
+
+    // Controls: Velora-attributable losses still fail.
+    WinMap fake = SnapshotWindows();
+    fake[reinterpret_cast<HWND>(0x7001)] = WinInfo{L"Fake", true, false, false, {}, GetCurrentProcessId()};
+    EXPECT(!DiffWindows(fake, SnapshotWindows()).empty(), "a vanished test-owned window is still a failure");
+    g_fgBefore = reinterpret_cast<HWND>(0x7002);
+    fake = SnapshotWindows();
+    fake[g_fgBefore] = WinInfo{L"Fake", true, false, false, {}, 4};
+    EXPECT(!DiffWindows(fake, SnapshotWindows()).empty(), "the window that had focus (Velora restores it) is still a failure");
+    g_fgBefore = nullptr;
+}
+
 // ------------------------------------------------------------- driver
 
 void WriteResults(const std::filesystem::path& out) {
@@ -981,6 +1056,7 @@ void WriteResults(const std::filesystem::path& out) {
     json::Value root;
     root.Set("realExplorer", g_realExplorer);
     root.Set("externalNewWindows", static_cast<int>(g_externalNew.size()));
+    root.Set("externalLostWindows", static_cast<int>(g_externalLost.size()));
     root.Set("failed", failed);
     root.Set("total", static_cast<int>(g_checks.size()));
     root.Set("latencyMs", stats);
@@ -991,6 +1067,7 @@ void WriteResults(const std::filesystem::path& out) {
 }  // namespace
 
 int wmain(int argc, wchar_t** argv) {
+    if (argc == 2 && std::wstring(argv[1]) == L"--selfdestroy-window") return SelfDestroyingWindow();
     if (argc < 3) {
         std::printf("usage: switch_gate_test <velora-shell.exe> <velora-watchdog.exe> [--cycles N] [--kills N] [--hangs N] [--restarts N] [--out file]\n");
         return 64;
@@ -1027,7 +1104,7 @@ int wmain(int argc, wchar_t** argv) {
     struct { const char* name; void (*fn)(); } phases[] = {
         {"dirty marker", PhaseDirtyMarker},      {"--restore CLI", PhaseRestoreCli},
         {"emergency hotkey", PhaseEmergencyHotkey}, {"watchdog death", PhaseWatchdogDeath},
-        {"hotkey unavailable", PhaseHotkeyUnavailable},
+        {"hotkey unavailable", PhaseHotkeyUnavailable}, {"window-loss attribution", PhaseAttribution},
         {"watchdog lifecycle", PhaseWatchdogLifecycle}, {"restore correctness", PhaseRestoreCorrectness},
         {"explorer restarts", PhaseExplorerRestarts}, {"forced kills", PhaseKills},
         {"hangs", PhaseHangs},                   {"enter/exit cycles", PhaseCycles},
@@ -1058,6 +1135,8 @@ int wmain(int argc, wchar_t** argv) {
         if (!v.empty()) std::printf("%-18s n=%zu min=%.0f median=%.0f max=%.0f ms\n", name.c_str(), v.size(), v.front(), v[v.size() / 2], v.back());
     }
     std::printf("windows other processes created during the run (tolerated): %zu\n", g_externalNew.size());
+    std::printf("foreign windows that vanished on their own (external, not failed): %zu\n", g_externalLost.size());
+    for (const auto& [h, what] : g_externalLost) std::printf("  external: %p %s\n", static_cast<void*>(h), what.c_str());
     std::printf("switch gate: %zu checks, %d failed -> %s\n", g_checks.size(), failed, failed ? "FAIL" : "PASS");
     if (!failed) std::filesystem::remove_all(g_dataDir);  // on failure keep the logs for diagnosis
     return failed ? 1 : 0;
