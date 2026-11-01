@@ -8,7 +8,7 @@ Status: not started | in progress | gated | passed | deferred
 | switch | gated | Day-2 safety gate PASS locally (117/117 checks on main 364f267, see "Day 2 review fixes"; original run 55/55); CI result recorded on the PRs |
 | render | passed (base) | tokens + animation engine (animation_test) + RenderHost (render_host_test: D3D11 + composition swap chain + D2D draw/present/resize, DWM Mica/rounded-corner helpers). No consumers yet (dock/menubar are Day 3) |
 | dock | gated (G1 built, per-monitor ready, 1 instance) | pinned + running apps, dots, launch/activate/minimize/cycle, menu; dock_test (decision logic, grouping, geometry, persistence); drawn live. **Click paths not exercised live** (would act on the developer's own windows) |
-| menubar | in progress (G1 minus tray-icon hosting) | Velora menu, active app, battery + clock, light/dark in the top appbar; menubar_test; live on this machine. **Tray hosting blocked** (Explorer owns the Win11 tray), popup/power paths checked by hand only |
+| menubar | gated (G1 with Velora-own status items; tray hosting dropped by decision, see DECISIONS) | Velora menu, active app, battery + clock, light/dark in the top appbar; menubar_test; live on this machine. **Tray hosting blocked** (Explorer owns the Win11 tray), popup/power paths checked by hand only |
 | windows | passed (G1 tracking) | window_tracker_test: lifecycle via WinEvents (create/title/minimize/restore/hide/destroy), tool/owned/never-shown windows excluded, own-process skip, fullscreen rect + elevation helpers, live foreground + fullscreen with VELORA_TEST_FOCUS=1 (run once locally: pass). Cloaked path and a real elevated window are unmeasured |
 | overview | not started | |
 | apps | gated (G1 built) | AppsFolder + Start-menu index (191 apps here), cached, background refresh; grid with search drawn live with real icons; apps_test. **Launching from the grid not exercised live**; pages/folders (G2) not built |
@@ -35,6 +35,7 @@ Starting commit: `1f1ea84d64b9b17ed5cbb40e0351e83dae99b2e5` (main before Day 2).
 Raw results: `docs/evidence/switch_gate_2026-11-01.json`. Run on Windows 11 10.0.26200, real Explorer present, 1 monitor, non-elevated.
 
 | Gate item | Requirement | Result |
+|---|---|---|
 | Enter/exit cycles | 50 cycles; window list before == after; taskbar restored every time | 50/50 clean. Also per cycle: marker + state.json present while in mode and marker gone after, watchdog exits, no Velora windows left, primary work area identical. Enter median 158 ms (max 193), exit median 195 ms (max 296) |
 | Forced kills | 10 x TerminateProcess(shell), restored < 1 s | 10/10. Taskbars visible after median 43 ms (max 45); marker removed, watchdog exits, work area and window list identical |
 | Hangs | 3 simulated hangs, restored < 3 s | 3/3: median 2264 ms, max 2268. Extra stress run of 15 hangs: max 2516 ms. Hung shell terminated by the watchdog each time |
