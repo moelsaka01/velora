@@ -28,6 +28,10 @@ void SetTaskbarsVisible(bool visible);
 // NOT success (nothing is visible/hidden; Explorer may not have started yet).
 bool WaitTaskbarsVisible(bool visible, DWORD timeoutMs);
 
+// True if any monitor (primary or secondary) still has a work area smaller than the
+// monitor, i.e. something (a taskbar that did not hide) still reserves space.
+bool AnyWorkAreaReserved();
+
 // ABM_GETSTATE / ABM_SETSTATE ABS_AUTOHIDE. No-ops in a test profile.
 bool GetTaskbarAutoHide();
 void SetTaskbarAutoHide(bool autoHide);

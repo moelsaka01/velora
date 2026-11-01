@@ -191,6 +191,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
     if (!manager.Enter()) {
         log::Error("enter failed; Windows left untouched");
+        if (!manager.LastError().empty() && !CurrentProfile().IsTest())
+            MessageBoxW(nullptr, manager.LastError().c_str(), L"Velora", MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
         g_manager = nullptr;
         return 2;
     }

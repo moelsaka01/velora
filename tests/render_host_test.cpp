@@ -27,12 +27,13 @@ int main() {
     if (!host.Initialize(hwnd)) {
         wchar_t ci[8] = {};
         if (GetEnvironmentVariableW(L"CI", ci, 8)) {
-            std::printf("SKIPPED: RenderHost could not initialize on this CI machine (no usable graphics stack)\n");
+            std::printf("render_host_test: skipped (RenderHost could not initialize on this CI machine: no usable graphics stack)\n");
             return 0;
         }
         std::printf("FAIL RenderHost::Initialize\n");
         return 1;
     }
+    std::printf("render_host_test: device\n");
     int failed = 0;
     auto check = [&](bool ok, const char* what) {
         if (!ok) {

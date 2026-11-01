@@ -1,7 +1,10 @@
 // Enter/exit of Velora Mode (CLAUDE.md §4). Owner: A.
 #pragma once
 
+#include <algorithm>
 #include <functional>
+#include <string>
+#include <vector>
 
 #include "core/contracts/state.h"
 #include "core/event_bus.h"
@@ -29,12 +32,15 @@ public:
     void Heartbeat();         // ~1 Hz: tell the watchdog the UI thread is alive
 
     bool Entered() const { return entered_; }
+    // Why the last Enter() failed, for a user-facing message ("" = no specific reason).
+    const std::wstring& LastError() const { return lastError_; }
     json::Value Status() const;
 
 private:
     static constexpr DWORD kDisarmTimeoutMs = 1000;
     static constexpr DWORD kWatchdogExitWaitMs = 2000;
 
+    void RememberTrays();
     bool StartWatchdog();
     bool Disarm();
     void StopWatchdog(DWORD waitMs);
@@ -44,6 +50,10 @@ private:
     HINSTANCE instance_;
     AppBar bar_;
     bool entered_ = false;
+    bool entering_ = false;                 // inside Enter(): TaskbarCreated is queued
+    bool pendingTaskbarCreated_ = false;
+    std::wstring lastError_;
+    std::vector<HWND> knownTrays_;          // sorted; a change means Explorer recreated its taskbar
     SwitchState state_;
 
     HANDLE watchdogProcess_ = nullptr;

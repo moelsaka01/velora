@@ -670,6 +670,27 @@ void PhaseEmergencyHotkey() {
     EXPECT(PollUntil([] { return !DirtyMarkerExists(DirtyMarkerPath()); }, 2000) >= 0, "marker removed");
 }
 
+// The emergency hotkey is a safety exit: if it cannot be registered, Enter must refuse.
+void PhaseHotkeyUnavailable() {
+    g_phase = "hotkey-unavailable";
+    ResetWorld();
+    std::filesystem::remove(g_dataDir / "logs" / "velora-shell.log");
+    bool taken = RegisterHotKey(nullptr, 79, MOD_CONTROL | MOD_ALT | MOD_SHIFT, VK_ESCAPE) != FALSE;  // we hold it
+    EXPECT(taken, "test process took the hotkey first");
+    Session s = StartShell();
+    EXPECT(s.enterMs < 0, "shell refused to enter without the emergency hotkey");
+    EXPECT(WaitExit(s.shell.h, 5000) && s.shell.ExitCode() == 2, "shell exited with 'enter failed' (2): " + std::to_string(s.shell.ExitCode()));
+    EXPECT(TraysAll(true) && !DirtyMarkerExists(DirtyMarkerPath()), "Windows left untouched, no marker");
+    EXPECT(PollUntil([] { return ProcessIdsNamed(L"velora-watchdog.exe").empty(); }, 3000) >= 0, "no watchdog left behind");
+    std::string log = ReadFileText(g_dataDir / "logs" / "velora-shell.log");
+    EXPECT(log.find("emergency hotkey") != std::string::npos, "clear reason logged");
+    if (taken) UnregisterHotKey(nullptr, 79);
+    Session ok = StartShell();  // and with the hotkey free it enters again
+    EXPECT(ok.enterMs >= 0, "enters once the hotkey is free");
+    RunToEnd(g_shellExe, L"--exit");
+    WaitExit(ok.shell.h, 5000);
+}
+
 void PhaseWatchdogDeath() {
     g_phase = "watchdog-death";
     ResetWorld();
@@ -1006,6 +1027,7 @@ int wmain(int argc, wchar_t** argv) {
     struct { const char* name; void (*fn)(); } phases[] = {
         {"dirty marker", PhaseDirtyMarker},      {"--restore CLI", PhaseRestoreCli},
         {"emergency hotkey", PhaseEmergencyHotkey}, {"watchdog death", PhaseWatchdogDeath},
+        {"hotkey unavailable", PhaseHotkeyUnavailable},
         {"watchdog lifecycle", PhaseWatchdogLifecycle}, {"restore correctness", PhaseRestoreCorrectness},
         {"explorer restarts", PhaseExplorerRestarts}, {"forced kills", PhaseKills},
         {"hangs", PhaseHangs},                   {"enter/exit cycles", PhaseCycles},
@@ -1037,6 +1059,6 @@ int wmain(int argc, wchar_t** argv) {
     }
     std::printf("windows other processes created during the run (tolerated): %zu\n", g_externalNew.size());
     std::printf("switch gate: %zu checks, %d failed -> %s\n", g_checks.size(), failed, failed ? "FAIL" : "PASS");
-    std::filesystem::remove_all(g_dataDir);
+    if (!failed) std::filesystem::remove_all(g_dataDir);  // on failure keep the logs for diagnosis
     return failed ? 1 : 0;
 }

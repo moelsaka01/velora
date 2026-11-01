@@ -60,6 +60,18 @@ bool SwitchManager::StartWatchdog() {
         StopWatchdog(0);
         return false;
     }
+    // The emergency hotkey is the way out when everything else is frozen: not optional.
+    const json::Value* payloadOut = r->Find("payload");
+    const json::Value* hotkey = payloadOut ? payloadOut->Find("hotkey") : nullptr;
+    if (!hotkey || !hotkey->AsBool()) {
+        lastError_ =
+            L"Velora could not start because the emergency restore shortcut (Ctrl+Alt+Shift+Esc) is already in use by "
+            L"another program.\n\nClose that program and start Velora again. Windows was not changed.";
+        log::Error("watchdog could not register the emergency hotkey Ctrl+Alt+Shift+Esc; refusing to enter Velora Mode");
+        Disarm();
+        StopWatchdog(kWatchdogExitWaitMs);
+        return false;
+    }
     return true;
 }
 
@@ -98,6 +110,13 @@ bool SwitchManager::Enter() {
     if (entered_) return true;
     log::Info("enter: begin");
     watchdogRestarts_ = 0;
+    lastError_.clear();
+    pendingTaskbarCreated_ = false;
+    struct EnteringGuard {
+        bool& flag;
+        explicit EnteringGuard(bool& f) : flag(f) { flag = true; }
+        ~EnteringGuard() { flag = false; }
+    } guard(entering_);
 
     auto statePath = StatePath();
     auto markerPath = DirtyMarkerPath();
@@ -125,18 +144,19 @@ bool SwitchManager::Enter() {
         Rollback();
         return false;
     }
-    SaveState(state_, statePath);  // now with watchdogPid
+    if (!SaveState(state_, statePath)) {  // now with watchdogPid
+        log::Error("enter: cannot update state.json with the watchdog pid; aborting");
+        Rollback();
+        return false;
+    }
 
     // 3. Hide the taskbars; if Explorer still reserves space for them, fall back to auto-hide.
     SetTaskbarsVisible(false);
     if (!WaitTaskbarsVisible(false, 1000)) log::Warn("enter: taskbar windows did not hide within 1 s");
-    if (HasRealTaskbar()) {
-        MONITORINFO mi{sizeof mi};
-        if (GetMonitorInfoW(MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY), &mi) && !EqualRect(&mi.rcWork, &mi.rcMonitor)) {
-            SetTaskbarAutoHide(true);
-            autoHideFallback_ = true;
-            log::Info("enter: work area still reserved after hiding; auto-hide fallback applied");
-        }
+    if (HasRealTaskbar() && AnyWorkAreaReserved()) {  // every monitor, including those with a secondary taskbar
+        SetTaskbarAutoHide(true);
+        autoHideFallback_ = true;
+        log::Info("enter: work area still reserved after hiding; auto-hide fallback applied");
     }
 
     // 4. Appbar so maximized windows respect Velora's bar. Degrades, never fails Enter.
@@ -148,10 +168,23 @@ bool SwitchManager::Enter() {
         if (!SaveState(state_, statePath)) log::Warn("enter: could not record the appbar handle in state.json");
     }
 
+    RememberTrays();
     entered_ = true;
+    entering_ = false;
     bus_.Post(EventType::Entered);
     log::Info("enter: done");
+    // A TaskbarCreated that arrived while we were entering (hidden taskbars and the appbar
+    // may predate Explorer's new taskbar): handle it now that we are in Velora Mode.
+    if (pendingTaskbarCreated_) {
+        pendingTaskbarCreated_ = false;
+        OnTaskbarCreated();
+    }
     return true;
+}
+
+void SwitchManager::RememberTrays() {
+    knownTrays_ = FindTrayWindows();
+    std::sort(knownTrays_.begin(), knownTrays_.end());
 }
 
 void SwitchManager::Rollback() {
@@ -185,6 +218,10 @@ void SwitchManager::Exit() {
 }
 
 void SwitchManager::OnTaskbarCreated() {
+    if (entering_) {
+        pendingTaskbarCreated_ = true;
+        return;
+    }
     if (!entered_) return;
     ++explorerRestarts_;
     log::Info("TaskbarCreated: Explorer restarted; re-hiding taskbars and re-registering appbars");
@@ -193,11 +230,26 @@ void SwitchManager::OnTaskbarCreated() {
     // fallback we applied ourselves needs re-asserting if Explorer reset it.
     if (autoHideFallback_) SetTaskbarAutoHide(true);
     bar_.Reregister();
+    RememberTrays();
     bus_.Post(EventType::ExplorerRestarted);
 }
 
 void SwitchManager::Reconcile() {
     if (!entered_) return;
+
+    // New tray windows = Explorer recreated its taskbar (also covers a missed TaskbarCreated):
+    // its appbar registrations are gone, register ours again.
+    {
+        std::vector<HWND> trays = FindTrayWindows();
+        std::sort(trays.begin(), trays.end());
+        if (trays != knownTrays_) {
+            knownTrays_ = trays;
+            if (!trays.empty()) {
+                log::Info("reconcile: taskbar windows changed; re-registering appbars");
+                bar_.Reregister();
+            }
+        }
+    }
 
     // Explorer (or a third-party appbar change) may re-show the taskbar.
     if (AnyTaskbarVisible()) {
@@ -210,7 +262,7 @@ void SwitchManager::Reconcile() {
     if (!watchdogProcess_ || WaitForSingleObject(watchdogProcess_, 0) == WAIT_OBJECT_0) {
         log::Error("watchdog exited unexpectedly");
         if (watchdogRestarts_ < 3 && (++watchdogRestarts_, StartWatchdog())) {
-            SaveState(state_, StatePath());
+            if (!SaveState(state_, StatePath())) log::Warn("could not update state.json with the new watchdog pid");
             log::Info("watchdog restarted");
         } else {
             log::Error("watchdog could not be restarted; leaving Velora Mode");

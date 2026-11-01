@@ -180,6 +180,12 @@ int ReclaimWorkAreas(const SwitchState& state) {
     return changed;
 }
 
+bool AnyWorkAreaReserved() {
+    for (const auto& m : CurrentMonitors())
+        if (!EqualRect(&m.work, &m.mon)) return true;
+    return false;
+}
+
 bool WorkAreasMatch(const SwitchState& state) {
     auto current = CurrentMonitors();
     for (const auto& rec : state.monitors) {
