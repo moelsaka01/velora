@@ -38,6 +38,7 @@ int ApplyVelora(bool dark);
 // Undo ApplyVelora. Idempotent; called from normal exit and from crash recovery.
 int RestoreOriginal();
 // Directory holding the generated images.
-std::filesystem::path WallpaperDir();
+std::filesystem::path WallpaperDir();  // first candidate
+std::vector<std::filesystem::path> WallpaperDirs();  // candidates, best first
 
 }  // namespace velora::wallpaper
