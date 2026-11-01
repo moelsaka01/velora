@@ -345,6 +345,17 @@ ID2D1Bitmap* Dock::BitmapFor(ID2D1DeviceContext* dc, const std::wstring& icon) {
     return nullptr;
 }
 
+ID2D1Bitmap* Dock::VeloraBitmap(ID2D1DeviceContext* dc, const D2D1_RECT_F& dipRect) {
+    int px = static_cast<int>(std::lround((dipRect.right - dipRect.left) * ui::Scale(dpi_)));
+    std::wstring key = L"velora-app:" + std::to_wstring(px);
+    if (auto it = bitmaps_.find(key); it != bitmaps_.end()) return it->second.Get();
+    ComPtr<ID2D1Bitmap> bmp;
+    ui::Pixels pixels;
+    if (ui::LoadVeloraIcon(px, &pixels)) bmp = ui::MakeBitmap(dc, pixels);
+    bitmaps_[key] = bmp;  // a null entry also stops retrying every frame
+    return bmp.Get();
+}
+
 void Dock::Tick() {
     if (!hwnd_) return;
     bool more = anim_.Tick(NowMs());
@@ -385,13 +396,18 @@ void Dock::Draw() {
         }
         D2D1_RECT_F ir = D2D1::RectF(x + 2, y + 2, x + kIcon - 2, y + kIcon - 2);
         if (it.app.internalApps) {
-            // The Apps item has no file icon: a drawn 3x3 dot grid (original glyph).
-            brush->SetColor(ui::Rgba(p.accent, appear_));
-            dc->FillRoundedRectangle(D2D1::RoundedRect(ir, 12, 12), brush.Get());
-            brush->SetColor(D2D1::ColorF(1, 1, 1, appear_));
-            float cx = (ir.left + ir.right) / 2, cy = (ir.top + ir.bottom) / 2;
-            for (int r = -1; r <= 1; ++r)
-                for (int c = -1; c <= 1; ++c) dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx + c * 10, cy + r * 10), 3, 3), brush.Get());
+            // The Apps item shows the Velora app icon, scaled to the device pixels of this display; the drawn
+            // dot grid (original glyph) is the fallback when the resource is unavailable.
+            if (ID2D1Bitmap* logo = VeloraBitmap(dc, ir)) {
+                dc->DrawBitmap(logo, ir, appear_, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+            } else {
+                brush->SetColor(ui::Rgba(p.accent, appear_));
+                dc->FillRoundedRectangle(D2D1::RoundedRect(ir, 12, 12), brush.Get());
+                brush->SetColor(D2D1::ColorF(1, 1, 1, appear_));
+                float cx = (ir.left + ir.right) / 2, cy = (ir.top + ir.bottom) / 2;
+                for (int r = -1; r <= 1; ++r)
+                    for (int c = -1; c <= 1; ++c) dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx + c * 10, cy + r * 10), 3, 3), brush.Get());
+            }
         } else if (ID2D1Bitmap* bmp = BitmapFor(dc, it.app.icon)) {
             dc->DrawBitmap(bmp, ir, appear_, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
         } else {
