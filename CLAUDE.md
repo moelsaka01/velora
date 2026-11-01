@@ -18,6 +18,7 @@ Deadline: a working release candidate within **8 calendar days**. Correctness an
 8. **Stability rules (never violate):** no admin rights for normal operation; never terminate or replace `explorer.exe`; no registry shell swap; no system-file changes; no disabling of security features or Windows Update; no DLL injection into other processes.
 9. **No borrowed identities.** Never bundle third-party keys, certificates, tokens or device/accessory identities. Signing material is ours, kept out of the repo and the installer.
 10. **Validation log.** Keep `docs/VALIDATION.md` (done / pending live tests per module) in step with PROGRESS.md evidence, and say what was not tested.
+11. **No Apple design resources.** Never accept or use Apple Design Resources (UI kits, Sketch/Figma libraries, SF fonts, SF Symbols) or repos redistributing Apple icons/assets. Their license excludes non-Apple-platform software.
 
 ---
 
