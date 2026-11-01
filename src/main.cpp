@@ -6,8 +6,11 @@
 #include <ShellScalingApi.h>
 #include <shellapi.h>
 
+#include <tlhelp32.h>
+
 #include <algorithm>
 #include <string>
+#include <vector>
 
 #include "core/contracts/ipc.h"
 #include "core/debounce.h"
@@ -17,6 +20,7 @@
 #include "core/log.h"
 #include "core/runtime.h"
 #include "core/state_store.h"
+#include "core/text.h"
 #include "apps/app_index.h"
 #include "apps/apps_grid.h"
 #include "dock/dock.h"
@@ -157,19 +161,51 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(h, msg, wp, lp);
 }
 
-// `velora-shell --exit`: ask the running shell to leave Velora Mode and wait for it.
+// Other resident Velora processes (shell, watchdog) besides this one. On-demand apps (files, settings)
+// may legitimately outlive the shell and are not counted.
+std::vector<std::wstring> OtherResidentProcesses() {
+    std::vector<std::wstring> found;
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return found;
+    PROCESSENTRY32W pe{sizeof pe};
+    for (BOOL ok = Process32FirstW(snap, &pe); ok; ok = Process32NextW(snap, &pe)) {
+        if (pe.th32ProcessID == GetCurrentProcessId()) continue;
+        std::wstring name = pe.szExeFile;
+        if (_wcsicmp(name.c_str(), L"velora-shell.exe") == 0 || _wcsicmp(name.c_str(), L"velora-watchdog.exe") == 0)
+            found.push_back(name + L":" + std::to_wstring(pe.th32ProcessID));
+    }
+    CloseHandle(snap);
+    return found;
+}
+
+// `velora-shell --exit`: ask the running shell to leave Velora Mode and wait for it. Exit check: no
+// resident Velora process may remain afterwards (a leftover watchdog or shell is a defect, exit code 4).
 int ExitRunningShell() {
     std::string resp;
     if (!ipc::Call(ShellPipeName(), ipc::MakeMessage("request", ipc::msg::kExit, 1), &resp, 3000)) return 1;
     auto r = json::Parse(resp);
     const json::Value* payload = r ? r->Find("payload") : nullptr;
     const json::Value* pid = payload ? payload->Find("pid") : nullptr;
-    if (!pid) return 0;
-    HANDLE h = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(pid->AsInt()));
-    if (h) {
-        WaitForSingleObject(h, 10000);
-        CloseHandle(h);
+    if (pid) {
+        HANDLE h = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(pid->AsInt()));
+        if (h) {
+            WaitForSingleObject(h, 10000);
+            CloseHandle(h);
+        }
     }
+    std::vector<std::wstring> left;
+    for (int i = 0; i < 20; ++i) {  // the watchdog disarms and exits just after the shell; allow 2 s
+        left = OtherResidentProcesses();
+        if (left.empty()) break;
+        Sleep(100);
+    }
+    if (!left.empty()) {
+        std::wstring names;
+        for (const auto& n : left) names += (names.empty() ? L"" : L", ") + n;
+        log::Error("exit check: Velora process still running after exit: " + WideToUtf8(names));
+        return 4;
+    }
+    log::Info("exit check: no resident Velora process remains");
     return 0;
 }
 
