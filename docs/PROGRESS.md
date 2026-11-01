@@ -22,3 +22,7 @@ Status: not started | in progress | gated | passed | deferred
 | settings | not started | |
 | compat | not started | |
 | installer | not started | |
+
+## Day 1
+- research: passed (docs/RESEARCH.md; gh api metadata, 3 Haiku lookups)
+- version.h from vcpkg.json: passed (PR #4, CI green)
