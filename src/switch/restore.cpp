@@ -35,7 +35,7 @@ bool TerminateRecordedShell(const SwitchState& state) {
     if (WaitForSingleObject(h, 0) == WAIT_TIMEOUT && IsRecordedShell(h, state)) {
         log::Warn("terminating velora-shell (pid " + std::to_string(state.shellPid) + ") before restore");
         if (TerminateProcess(h, 1)) {
-            WaitForSingleObject(h, 1000);
+            WaitForSingleObject(h, 500);
             killed = true;
         }
     }
@@ -64,7 +64,9 @@ RestoreResult RestoreWindowsDesktop(const RestoreOptions& opt) {
     }
     r.hadState = state.has_value();
 
-    // 1. The shell must not be alive to re-hide the taskbar behind us.
+    // 1. Taskbar first (never wrong, and the user sees it back at once); then the shell,
+    //    which must not be alive to re-hide it behind us. Step 3 re-asserts visibility.
+    if (opt.terminateShell) SetTaskbarsVisible(true);
     if (opt.terminateShell && state) {
         r.terminatedShell = TerminateRecordedShell(*state);
         RemoveRecordedAppbars(*state);  // Explorer may not have noticed the dead appbar yet

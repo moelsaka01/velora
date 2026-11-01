@@ -17,3 +17,5 @@ jobs:
         run: cmake --build build --config Release
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: Render host path (device or skipped)
+        run: ctest --test-dir build -C Release -R render_host_test -V

@@ -170,6 +170,7 @@ int Watch(DWORD shellPid) {
     ipc::PipeServer server;
     bool armed = false;     // hello accepted, not yet disarmed
     bool disarmed = false;  // shell is leaving Velora Mode: answer nothing new
+    bool hotkeyOk = false;  // emergency hotkey registered (set before the first message is pumped)
     ULONGLONG lastBeat = GetTickCount64();
     const ULONGLONG started = lastBeat;
 
@@ -209,6 +210,7 @@ int Watch(DWORD shellPid) {
                 json::Value p;
                 p.Set("pid", static_cast<std::int64_t>(GetCurrentProcessId()));
                 p.Set("protocol", static_cast<int>(ipc::kProtocolVersion));
+                p.Set("hotkey", hotkeyOk);  // false: the shell must not enter Velora Mode
                 return reply(0, {}, p);
             }
             return {};
@@ -220,7 +222,14 @@ int Watch(DWORD shellPid) {
 
     HWND window = MakeWindow();
     // Emergency hotkey lives here, not in the shell, so it works with a frozen shell.
-    if (!window || !RegisterHotKey(window, kHotkeyId, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_ESCAPE))
+    // A previous watchdog that has just exited can still hold the hotkey for a few ms while the
+    // system tears down its window: retry briefly before treating it as taken by someone else.
+    for (int attempt = 0; window && !hotkeyOk && attempt < 20; ++attempt) {
+        hotkeyOk = RegisterHotKey(window, kHotkeyId, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_ESCAPE) != FALSE;
+        if (hotkeyOk || GetLastError() != ERROR_HOTKEY_ALREADY_REGISTERED) break;
+        Sleep(50);
+    }
+    if (!hotkeyOk)
         log::Warn("emergency hotkey Ctrl+Alt+Shift+Esc could not be registered: error " + std::to_string(GetLastError()));
 
     log::Info("watching shell pid " + std::to_string(shellPid));

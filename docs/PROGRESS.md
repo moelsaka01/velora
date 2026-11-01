@@ -5,7 +5,7 @@ Status: not started | in progress | gated | passed | deferred
 | Module | Status | Evidence |
 |---|---|---|
 | core | passed (G1) | contracts v1 + json, state store, IPC pipe, runtime/profile, log, event bus; core_test passes (PR #9 merged, CI green) |
-| switch | gated | Day-2 safety gate PASS locally (55/55 checks, see Day 2 below); CI result recorded on the PR |
+| switch | gated | Day-2 safety gate PASS locally (111/111 checks after the review fixes, see "Day 2 review fixes"; original run 55/55); CI result recorded on the PRs |
 | render | passed (base) | tokens + animation engine (animation_test) + RenderHost (render_host_test: D3D11 + composition swap chain + D2D draw/present/resize, DWM Mica/rounded-corner helpers). No consumers yet (dock/menubar are Day 3) |
 | dock | not started | |
 | menubar | not started | |
@@ -65,7 +65,7 @@ Raw results: `docs/evidence/switch_gate_2026-11-01.json`. Run on Windows 11 10.0
 - `animation.h`: cubic-bezier tweens (token curves), spring motion with retarget (Dock magnification), enable switch (gaming mode / reduced motion jumps to the end), re-entrancy-safe. `animation_test`: easing endpoints and monotonicity, delay/finish-once, cancel, disabled, re-entrant start, spring settles < 2 s with < 10% overshoot, stall-safe.
 - `RenderHost`: D3D11 (hardware, WARP fallback) + DXGI composition swap chain (premultiplied alpha) + DirectComposition + D2D device context; `ApplyBackdrop` (Mica/Acrylic, Windows 11 22621+, returns false when unsupported) and `ApplyRoundedCorners`. `render_host_test` on this machine: hardware adapter, 3 frames + resize + draw, Mica and rounded corners supported.
 - One measurement, not a benchmark: DXGI `QueryVideoMemoryInfo` reported 15.1 MB local GPU usage for the test process with a single 320x160 host. Idle GPU/RAM budgets are unmeasured until the shell has real windows (D6 bench).
-- CI: `render_host_test` passed on the runner in 0.05 s, but ctest hides stdout on success, so whether it initialized a device or took the loud skip path (only allowed when `CI` is set) is unmeasured. Local run initialized a hardware adapter.
+- CI: `render_host_test` passed on the runner in 0.05 s, but ctest hides stdout on success, so the device-vs-skip path is now printed (see PR C: the CI runner reported `device`). Local run initialized a hardware adapter.
 
 
 ## Day 2 review fixes
@@ -79,3 +79,18 @@ Raw results: `docs/evidence/switch_gate_2026-11-01.json`. Run on Windows 11 10.0
 - Regression tests (`restore correctness` phase; kill/hang phases; core_test): stale state without marker ignored + deleted, with marker applied + consumed; state.json gone after clean exit, kill and hang recovery; empty list never succeeds; login check stays pending with marker kept, then restores on TaskbarCreated and on the periodic retry, and gives up with exit 3 and the marker kept; appbarHwnds round trip.
 - Work area after recovery, measured from the kill/hang (real Explorer, placeholder appbar registered): kills 10/10 back after median 140 ms (max 184); hangs 3/3 median 2319 ms (max 2330, i.e. the hang detection time, work area follows within ~70 ms). Unmeasured: whether the explicit ABM_REMOVE or Explorer's own cleanup did the work (not separated).
 - Full gate after PR B: 104/104 checks.
+
+### PR C: low-severity fixes
+- Auto-hide fallback checks every monitor; taskbar shown before the recorded shell is terminated (wait capped at 500 ms); Enter aborts if state.json cannot be updated; TaskbarCreated during Enter is queued; Reconcile re-registers appbars when the tray windows change; Enter aborts with a clear message if the emergency hotkey cannot be registered.
+- Tests: new `hotkey unavailable` phase (hotkey held by the test; shell exits 2, nothing changed, no watchdog left, enters once it is free). Items 8-10 have no dedicated regression test (LOW; secondary taskbar and an Explorer restart inside Enter cannot be produced with fake tray windows): unmeasured.
+- `render_host_test` prints `render_host_test: device` or `render_host_test: skipped (...)`; CI has an extra `-V` step so the line is visible. Local: `device` (hardware adapter). CI runner: `render_host_test: device` (adapter reported as hardware, run 41297919203).
+- Gate flake found and fixed (test only): the exit->enter loop started the next shell while the previous kill-recovery watchdog still owned the pipe, so the new hello failed. The loop now waits for that watchdog. Before the fix 2 of 6 full runs failed on that check; after it 4 of 4 full runs passed (111 checks each).
+- One full run also failed 47 `cycles` checks with `lost ... Chrome_WidgetWin_1` (another application's windows disappearing between the snapshots); not reproduced in 8 later full/cycle runs. Treated as desktop churn from other applications, not investigated further: unexplained.
+
+### Re-run of the full switch gate after PR A+B+C (tip of fix/low-severity)
+Raw results: `docs/evidence/switch_gate_2026-11-01_review-fixes.json`. Windows 11 10.0.26200, real Explorer, 1 monitor, non-elevated. **111/111 checks pass.**
+- Enter/exit: 50/50 cycles clean (window list identical, state.json consumed, work area identical). Enter median 349 ms (max 566), exit median 342 ms (max 588).
+- Forced kills 10/10: taskbars back median 74 ms (max 100); work area back median 201 ms (max 232); watchdog exits, marker and state.json gone.
+- Hangs 3/3: taskbars back median 2248 ms (max 2265, budget 3 s); work area back median 2335 ms (max 2354).
+- Hotkey with frozen shell: 17 ms. Explorer restarts (simulated) 3/3, re-hidden median 31 ms.
+- Still unmeasured (unchanged): real Explorer restart, real taskbar hide/auto-hide fallback and multi-monitor secondary taskbar, physical key press, elevated windows.
