@@ -673,9 +673,152 @@ void PhaseWatchdogDeath() {
         6000);
     EXPECT(ms >= 0, "shell replaced the dead watchdog after " + Fmt(ms) + " ms");
     EXPECT(s.shell.Alive() && TraysAll(false), "still in Velora Mode");
+    auto restarted = ShellState();
+    EXPECT(restarted && restarted->Find("watchdogRestarts") && restarted->Find("watchdogRestarts")->AsInt() == 1,
+           "one watchdog restart counted");
     RunToEnd(g_shellExe, L"--exit");
     WaitExit(s.shell.h, 5000);
     EXPECT(TraysAll(true), "clean exit afterwards");
+}
+
+// ------------------------------------------------------------- watchdog lifecycle (review PR A)
+
+// A stand-in for "the shell" when the watchdog is driven directly: an unrelated
+// process of ours that the watchdog may never terminate.
+Proc SpawnHelper() { return Spawn(L"C:\\Windows\\System32\\cmd.exe", L"/c ping -n 60 127.0.0.1 >nul"); }
+
+// type = hello | disarm. Returns the response status, or -1 if there was no response.
+int WatchdogRequest(ipc::PipeClient& c, const char* type, std::int64_t pid) {
+    json::Value p;
+    p.Set("client", "test");
+    p.Set("pid", pid);
+    p.Set("protocol", static_cast<int>(ipc::kProtocolVersion));
+    std::string resp;
+    if (!c.Request(ipc::MakeMessage("request", type, 1, p), &resp, 2000)) return -1;
+    auto r = json::Parse(resp);
+    return r && r->Find("status") ? static_cast<int>(r->Find("status")->AsInt(-1)) : -1;
+}
+
+void PhaseWatchdogLifecycle() {
+    g_phase = "watchdog-lifecycle";
+
+    // 1. Disarm: after the ack the watchdog exits, and the shell going away later restores nothing.
+    ResetWorld();
+    g_fx.HideTrays();
+    LeaveCrashDebris(0, 0);
+    {
+        Proc helper = SpawnHelper();
+        Proc wd = Spawn(g_watchdogExe, L"--watch " + std::to_wstring(helper.pid));
+        ipc::PipeClient c;
+        EXPECT(c.Connect(WatchdogPipeName(), 3000), "connect to the watchdog");
+        EXPECT(WatchdogRequest(c, ipc::msg::kHello, helper.pid) == 0, "hello with the right pid arms");
+        EXPECT(WatchdogRequest(c, ipc::msg::kDisarm, helper.pid) == 0, "disarm acknowledged (synchronous)");
+        EXPECT(WaitExit(wd.h, 2000), "watchdog exits on disarm");
+        TerminateProcess(helper.h, 0);  // "the shell went away" after leaving Velora Mode
+        Sleep(400);
+        EXPECT(TraysAll(false) && DirtyMarkerExists(DirtyMarkerPath()), "disarmed watchdog restored nothing");
+        EXPECT(wd.ExitCode() == 0, "exit code " + std::to_string(wd.ExitCode()));
+    }
+
+    // 2. Armed, heartbeats stop, but the dirty marker is gone: exit quietly, never terminate anything.
+    ResetWorld();
+    g_fx.HideTrays();
+    LeaveCrashDebris(0, 0);
+    DeleteFileW(DirtyMarkerPath().c_str());
+    {
+        Proc helper = SpawnHelper();
+        Proc wd = Spawn(g_watchdogExe, L"--watch " + std::to_wstring(helper.pid));
+        ipc::PipeClient c;
+        EXPECT(c.Connect(WatchdogPipeName(), 3000) && WatchdogRequest(c, ipc::msg::kHello, helper.pid) == 0, "armed");
+        EXPECT(WaitExit(wd.h, ipc::kHeartbeatTimeoutMs + 2500), "watchdog exits after the heartbeat timeout");
+        EXPECT(helper.Alive(), "the silent 'shell' was NOT terminated");
+        EXPECT(TraysAll(false), "taskbars untouched without a marker");
+    }
+
+    // 3. Never armed (no hello): after the startup grace it exits quietly even with a marker present.
+    ResetWorld();
+    g_fx.HideTrays();
+    LeaveCrashDebris(0, 0);
+    {
+        Proc helper = SpawnHelper();
+        Proc wd = Spawn(g_watchdogExe, L"--watch " + std::to_wstring(helper.pid));
+        EXPECT(WaitExit(wd.h, 8000), "unarmed watchdog exits after the startup grace");
+        EXPECT(helper.Alive(), "unarmed watchdog terminated nothing");
+        EXPECT(TraysAll(false) && DirtyMarkerExists(DirtyMarkerPath()), "unarmed watchdog restored nothing");
+    }
+
+    // 4. hello must carry the shell pid: a mismatch is rejected and does not arm.
+    ResetWorld();
+    g_fx.HideTrays();
+    LeaveCrashDebris(0, 0);
+    {
+        Proc helper = SpawnHelper();
+        Proc wd = Spawn(g_watchdogExe, L"--watch " + std::to_wstring(helper.pid));
+        ipc::PipeClient c;
+        EXPECT(c.Connect(WatchdogPipeName(), 3000), "connect");
+        int st = WatchdogRequest(c, ipc::msg::kHello, helper.pid + 1);
+        EXPECT(st == 400, "hello with the wrong pid rejected, status " + std::to_string(st));
+        TerminateProcess(helper.h, 0);
+        EXPECT(WaitExit(wd.h, 3000), "watchdog exits when the shell is gone");
+        Sleep(200);
+        EXPECT(TraysAll(false) && DirtyMarkerExists(DirtyMarkerPath()), "an unarmed (pid-mismatch) watchdog restored nothing");
+    }
+
+    // 5. Goodbye wins over a later hello: a watchdog that was told to go is never armed again.
+    ResetWorld();
+    {
+        Proc helper = SpawnHelper();
+        Proc wd = Spawn(g_watchdogExe, L"--watch " + std::to_wstring(helper.pid));
+        ipc::PipeClient c1, c2;
+        EXPECT(c1.Connect(WatchdogPipeName(), 3000) && c2.Connect(WatchdogPipeName(), 3000), "two clients");
+        EXPECT(WatchdogRequest(c1, ipc::msg::kHello, helper.pid) == 0, "armed");
+        EXPECT(WatchdogRequest(c1, ipc::msg::kDisarm, helper.pid) == 0, "disarmed");
+        EXPECT(WatchdogRequest(c2, ipc::msg::kHello, helper.pid) != 0, "a hello after the goodbye is not answered with ok");
+        EXPECT(WaitExit(wd.h, 2000), "watchdog gone");
+    }
+
+    // 6. Exit -> immediate Enter: the old watchdog is gone before the shell exits, so the new session's
+    //    watchdog (not a dying one) is the armed one: killing the new shell must restore Windows.
+    int ok = 0;
+    for (int i = 0; i < 5; ++i) {
+        ResetWorld();
+        Session a = StartShell();
+        bool good = a.enterMs >= 0;
+        Proc oldWd{OpenProcess(SYNCHRONIZE, FALSE, a.watchdogPid), a.watchdogPid};
+        RunToEnd(g_shellExe, L"--exit");
+        good = good && WaitExit(a.shell.h, 5000);
+        bool oldGone = !oldWd.h || WaitForSingleObject(oldWd.h, 0) == WAIT_OBJECT_0;  // no grace: already gone
+        if (oldWd.h) CloseHandle(oldWd.h);
+        Session b = StartShell();  // immediately
+        good = good && oldGone && b.enterMs >= 0 && b.watchdogPid != a.watchdogPid;
+        double t0 = NowMs();
+        if (b.shell.h) TerminateProcess(b.shell.h, 9);
+        double ms = PollUntil([] { return TraysAll(true); }, 3000, t0);
+        good = good && ms >= 0 && ms <= 1000;
+        Record("exit->enter " + std::to_string(i), good,
+               "old watchdog gone at shell exit " + std::to_string(oldGone) + ", new session recovered after " + Fmt(ms) + " ms");
+        if (good) ++ok;
+    }
+    Record("every immediate re-enter is protected by its own watchdog", ok == 5, std::to_string(ok) + "/5");
+
+    // 7. A failed watchdog restart terminates the unconnected watchdog it started, and the shell leaves Velora Mode.
+    ResetWorld();
+    {
+        std::filesystem::path flag = g_dataDir / L"reject_hello";
+        Session s = StartShell();
+        EXPECT(s.enterMs >= 0, "enter");
+        std::ofstream(flag) << "x";  // from now on every watchdog rejects hello
+        HANDLE wd = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, s.watchdogPid);
+        if (wd) {
+            TerminateProcess(wd, 1);  // a Velora process
+            CloseHandle(wd);
+        }
+        EXPECT(WaitExit(s.shell.h, 15000), "shell left Velora Mode when the watchdog could not be replaced");
+        EXPECT(PollUntil([] { return ProcessIdsNamed(L"velora-watchdog.exe").empty(); }, 500) >= 0,
+               "no rejected, unconnected watchdog left running");
+        EXPECT(TraysAll(true), "taskbars visible");
+        std::filesystem::remove(flag);
+    }
 }
 
 // ------------------------------------------------------------- driver
@@ -741,6 +884,8 @@ int wmain(int argc, wchar_t** argv) {
     std::filesystem::create_directories(g_dataDir);
     SetEnvironmentVariableW(L"VELORA_TEST_PROFILE", id.c_str());
     SetEnvironmentVariableW(L"VELORA_DATA_DIR", g_dataDir.c_str());
+    // Test hook in velora-watchdog: rejects hello while this file exists (PhaseWatchdogLifecycle, step 7).
+    SetEnvironmentVariableW(L"VELORA_TEST_WATCHDOG_REJECT_HELLO_FILE", (g_dataDir / L"reject_hello").c_str());
 
     g_realExplorer = FindWindowW(L"Shell_TrayWnd", nullptr) != nullptr;
     std::printf("switch gate: real shell tray %s; data dir %s\n", g_realExplorer ? "present" : "absent (appbar checks skipped)",
@@ -752,6 +897,7 @@ int wmain(int argc, wchar_t** argv) {
     struct { const char* name; void (*fn)(); } phases[] = {
         {"dirty marker", PhaseDirtyMarker},      {"--restore CLI", PhaseRestoreCli},
         {"emergency hotkey", PhaseEmergencyHotkey}, {"watchdog death", PhaseWatchdogDeath},
+        {"watchdog lifecycle", PhaseWatchdogLifecycle},
         {"explorer restarts", PhaseExplorerRestarts}, {"forced kills", PhaseKills},
         {"hangs", PhaseHangs},                   {"enter/exit cycles", PhaseCycles},
     };

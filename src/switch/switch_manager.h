@@ -32,8 +32,12 @@ public:
     json::Value Status() const;
 
 private:
+    static constexpr DWORD kDisarmTimeoutMs = 1000;
+    static constexpr DWORD kWatchdogExitWaitMs = 2000;
+
     bool StartWatchdog();
-    void StopWatchdog(bool graceful);
+    bool Disarm();
+    void StopWatchdog(DWORD waitMs);
     void Rollback();
 
     EventBus& bus_;
