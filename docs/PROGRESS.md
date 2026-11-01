@@ -35,7 +35,6 @@ Starting commit: `1f1ea84d64b9b17ed5cbb40e0351e83dae99b2e5` (main before Day 2).
 Raw results: `docs/evidence/switch_gate_2026-11-01.json`. Run on Windows 11 10.0.26200, real Explorer present, 1 monitor, non-elevated.
 
 | Gate item | Requirement | Result |
-|---|---|---|
 | Enter/exit cycles | 50 cycles; window list before == after; taskbar restored every time | 50/50 clean. Also per cycle: marker + state.json present while in mode and marker gone after, watchdog exits, no Velora windows left, primary work area identical. Enter median 158 ms (max 193), exit median 195 ms (max 296) |
 | Forced kills | 10 x TerminateProcess(shell), restored < 1 s | 10/10. Taskbars visible after median 43 ms (max 45); marker removed, watchdog exits, work area and window list identical |
 | Hangs | 3 simulated hangs, restored < 3 s | 3/3: median 2264 ms, max 2268. Extra stress run of 15 hangs: max 2516 ms. Hung shell terminated by the watchdog each time |
@@ -168,3 +167,6 @@ Machine: the developer laptop on a normal desktop (Claude app, browser, game lib
 
 ### Exit latency (perf/exit-latency)
 - Wallpaper restore (~300 ms of Explorer round trips) now runs on a thread alongside the taskbar steps on a normal exit and is joined before the marker is removed. `velora-shell --exit` until the shell is gone: **~400 ms** (4 hand runs: 392, 408, 401, 405; one bench run: 382 ms; target < 1 s met). The earlier ~1030 ms was `Start-Process -Wait` overhead in PowerShell, not the shell; bench.ps1 now waits on the helper process object and then for shell and watchdog to be gone. Raw: `bench/20261101-184708_*`. Not measured: the same method on the old binary.
+## Backlog
+
+- Day 7 experiment: read tray icons via UI Automation, time-boxed 2 h (read-only; would feed a mirrored status strip if it works without injecting into Explorer).

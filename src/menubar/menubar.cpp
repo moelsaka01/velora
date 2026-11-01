@@ -20,6 +20,7 @@ namespace {
 
 constexpr UINT_PTR kTimerClock = 1;
 constexpr UINT_PTR kTimerRedraw = 2;
+constexpr UINT_PTR kTimerOverflowEnter = 3;
 constexpr float kPad = 12.0f;
 
 enum Cmd : UINT { kAbout = 1, kSettings, kApps, kSleep, kRestart, kShutDown, kExit };
@@ -52,6 +53,21 @@ void DoExitWindows(UINT flags, const char* what) {
     if (!EnableShutdownPrivilege()) log::Warn("power: could not enable SeShutdownPrivilege");
     if (!ExitWindowsEx(flags, SHTDN_REASON_MAJOR_OTHER | SHTDN_REASON_MINOR_OTHER | SHTDN_REASON_FLAG_PLANNED))
         log::Error(std::string("power: ExitWindowsEx failed, error ") + std::to_string(GetLastError()));
+}
+
+// Opens Windows' own notification-overflow flyout the documented way: the Win+B shortcut moves
+// focus to the notification area, Enter then opens the hidden-icons flyout. Keyboard input only;
+// nothing is injected into Explorer.
+void SendKeys(std::initializer_list<std::pair<WORD, bool>> keys) {
+    std::vector<INPUT> in;
+    for (auto [vk, up] : keys) {
+        INPUT i{};
+        i.type = INPUT_KEYBOARD;
+        i.ki.wVk = vk;
+        i.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+        in.push_back(i);
+    }
+    SendInput(static_cast<UINT>(in.size()), in.data(), sizeof(INPUT));
 }
 
 bool IsShellClass(HWND h) {
@@ -208,6 +224,7 @@ void MenuBar::Layout() {
         x -= tw + 14;
     };
     place(L"clock", clockText_);
+    place(L"overflow", L"⋯");
     for (const auto& s : status_) place(s.id, s.text);
 }
 
@@ -356,6 +373,12 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
                 result = 0;
                 return true;
             }
+            if (wp == kTimerOverflowEnter) {
+                KillTimer(h, kTimerOverflowEnter);
+                SendKeys({{VK_RETURN, false}, {VK_RETURN, true}});
+                result = 0;
+                return true;
+            }
             if (wp == kTimerRedraw) {
                 KillTimer(h, kTimerRedraw);
                 Draw();
@@ -382,6 +405,16 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
                 ShowVeloraMenu();
                 result = 0;
                 return true;
+            }
+            for (const auto& [key, rect] : rightItems_) {
+                if (key.rfind(L"overflow
+", 0) == 0 && inRect(rect, GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) {
+                    log::Info("menubar: opening the Windows notification overflow (Win+B, Enter)");
+                    SendKeys({{VK_LWIN, false}, {'B', false}, {'B', true}, {VK_LWIN, true}});
+                    SetTimer(h, kTimerOverflowEnter, 250, nullptr);
+                    result = 0;
+                    return true;
+                }
             }
             return false;
         default:
