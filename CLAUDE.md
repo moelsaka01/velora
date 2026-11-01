@@ -152,7 +152,7 @@ Parallelizable owners in brackets (§10).
 - **D5:** overview G1–G2, control G1, notify G1 + sparse package, settings G1, hotkeys, desktops G1. [B, C] compat: Objective-C runtime + CoreFoundation. [D]
 - **D6:** performance pass and bench; gaming mode; startup tuning; notify G2; menu tier 3. [A, C] compat: Foundation subset, CLI target app. [D]
 - **D7:** integration tests, multi-monitor/DPI matrix, MENU_COMPAT table, G2 work, bug fixes. compat: GUI attempt (§8 G3). [all]
-- **D8:** installer, signing, acceptance run, release report, GitHub release candidate. [A]
+- **D8:** installer, signing, acceptance run, release report, GitHub release candidate. Code-sign every release binary and the installer (Authenticode, our own certificate, §0.9), then submit the signed release builds to McAfee and Microsoft (Defender) as false positives before launch: unsigned new executables that hide the taskbar and manage windows are quarantined by reputation heuristics (seen on a developer machine: McAfee "ti!" detections). Record the submission ids and outcomes in `RELEASE_REPORT.md`. [A]
 
 If a module misses its gate by its day, ship it at the last passed gate and move on. Do not let one module consume the schedule.
 
