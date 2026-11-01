@@ -49,6 +49,12 @@ struct Pixels {
     std::vector<std::uint8_t> bgra;  // premultiplied, top-down
 };
 
+// Synchronous icon load for a shell parsing name (an exe path, a .lnk or "shell:AppsFolder\\<aumid>") through the
+// fallback chain: shell image factory -> shortcut icon location -> target exe. Needs COM on the calling thread.
+// `how` (optional) receives the step that produced the pixels. False means: draw the letter tile.
+// `skipShellFactory` exists for tests: it forces the later steps of the chain.
+bool LoadIconPixels(const std::wstring& source, Pixels* out, std::string* how = nullptr, bool skipShellFactory = false);
+
 // Asynchronous icon loading (one worker thread, started on the first Request). The pixels
 // of an icon live here once; each window turns them into its own D2D bitmap.
 class IconStore {

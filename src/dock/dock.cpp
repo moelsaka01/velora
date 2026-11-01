@@ -266,21 +266,29 @@ DockApp Dock::DescribeUnpinned(const DockWindow& w) {
     DockApp a;
     a.aumid = w.aumid;
     a.exePath = w.exePath;
-    for (const auto& e : snapshot) {
-        bool hit = (!w.aumid.empty() && !e.aumid.empty() && Ieq(w.aumid, e.aumid)) ||
-                   (w.aumid.empty() && !w.exePath.empty() && Ieq(w.exePath, e.exePath));
-        if (hit) {
-            a.name = e.name;
-            a.launch = e.launch;
-            a.icon = e.icon;
+    // A window of a UWP app is owned by ApplicationFrameHost: only its AUMID identifies the app.
+    const bool frameHost = ui::Lower(ui::StemOf(w.exePath)) == L"applicationframehost";
+    auto take = [&](const apps::AppEntry& e) {
+        a.name = e.name;
+        a.launch = e.launch;
+        a.icon = e.icon;
+    };
+    for (const auto& e : snapshot)  // AUMID first ...
+        if (!w.aumid.empty() && !e.aumid.empty() && Ieq(w.aumid, e.aumid)) {
+            take(e);
             return a;
         }
-    }
-    if (!w.aumid.empty()) {
+    for (const auto& e : snapshot)  // ... then the executable (a Win32 window may carry its own AUMID, e.g. Chrome)
+        if (!frameHost && !w.exePath.empty() && Ieq(w.exePath, e.exePath)) {
+            take(e);
+            return a;
+        }
+    if (frameHost && !w.aumid.empty()) {
         a.name = w.title.empty() ? w.aumid : w.title;
         a.launch = L"shell:AppsFolder\\" + w.aumid;
         a.icon = a.launch;
     } else {
+        // Not in the index: the executable itself still has a name and an icon.
         std::wstring desc = ui::FileDescription(w.exePath);
         a.name = desc.empty() ? ui::StemOf(w.exePath) : desc;
         a.launch = w.exePath;
