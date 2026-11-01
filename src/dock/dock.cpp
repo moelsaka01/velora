@@ -300,10 +300,16 @@ void Dock::Rebuild() {
     }
     std::erase_if(aumidCache_, [&](const auto& kv) { return !std::binary_search(live.begin(), live.end(), kv.first); });
 
-    items_ = BuildItems(pinned_, windows, [this](const DockWindow& w) { return DescribeUnpinned(w); });
+    std::error_code ec;
+    auto visible = VisiblePinned(pinned_, [&](const std::wstring& p) { return std::filesystem::exists(p, ec); });
+    if (visible.size() != hiddenLogged_) {
+        hiddenLogged_ = visible.size();
+        log::Info("dock: " + std::to_string(pinned_.size() - visible.size()) + " pinned app(s) hidden (missing file or module not at G1)");
+    }
+    items_ = BuildItems(visible, windows, [this](const DockWindow& w) { return DescribeUnpinned(w); });
     size_t before = geo_.itemX.size();
     float widthBefore = geo_.pillWidth;
-    geo_ = ComputeGeometry(items_.size(), pinned_.size());
+    geo_ = ComputeGeometry(items_.size(), visible.size());
     hover_.assign(items_.size(), 0.0f);
     hoverIndex_ = -1;
     if (hwnd_) {
