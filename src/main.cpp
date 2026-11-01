@@ -1,6 +1,221 @@
-// velora-shell: empty skeleton (Day 1). Real implementation lands on its feat/ branch.
-#include <windows.h>
+// velora-shell: resident process. Day 2 scope: switching (enter/exit/recovery
+// hooks), IPC endpoint and the heartbeat to the watchdog. Dock, menu bar and the
+// other modules plug in here on their own branches.
+#include "core/win.h"
 
-int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+#include <ShellScalingApi.h>
+#include <shellapi.h>
+
+#include <string>
+
+#include "core/contracts/ipc.h"
+#include "core/event_bus.h"
+#include "core/ipc_pipe.h"
+#include "core/json.h"
+#include "core/log.h"
+#include "core/runtime.h"
+#include "core/state_store.h"
+#include "switch/restore.h"
+#include "switch/switch_manager.h"
+
+namespace {
+
+using namespace velora;
+
+constexpr UINT_PTR kTimerTick = 1;          // heartbeat + reconcile, 1 Hz
+constexpr UINT_PTR kTimerRehideEarly = 2;   // after TaskbarCreated
+constexpr UINT_PTR kTimerRehideLate = 3;
+
+UINT g_taskbarCreated = 0;
+sw::SwitchManager* g_manager = nullptr;
+HWND g_window = nullptr;
+
+std::string Reply(const json::Value& req, int status, const json::Value& payload = {}, const std::string& error = {}) {
+    std::string type = "hello";
+    if (const auto* t = req.Find("type"); t && t->IsString()) type = t->AsString();
+    std::int64_t id = -1;
+    if (const auto* i = req.Find("id")) id = i->AsInt(-1);
+    return ipc::MakeMessage("response", type.c_str(), id, payload, status, error);
+}
+
+std::string HandleRequest(std::string_view raw) {
+    auto doc = json::Parse(raw);
+    if (!doc || !doc->IsObject()) return Reply(json::Value{}, 400, {}, "malformed json");
+    const json::Value& req = *doc;
+
+    const auto* v = req.Find("v");
+    if (!v || v->AsInt() != ipc::kProtocolVersion) return Reply(req, 505, {}, "unsupported protocol version");
+    const auto* kind = req.Find("kind");
+    const auto* type = req.Find("type");
+    if (!kind || !type || !type->IsString()) return Reply(req, 400, {}, "missing kind/type");
+    if (kind->AsString() == "event") return {};  // events get no response
+    if (kind->AsString() != "request") return Reply(req, 400, {}, "bad kind");
+
+    const std::string& t = type->AsString();
+    json::Value self;
+    self.Set("pid", static_cast<std::int64_t>(GetCurrentProcessId()));
+
+    if (t == ipc::msg::kHello) {
+        self.Set("protocol", static_cast<int>(ipc::kProtocolVersion));
+        return Reply(req, 0, self);
+    }
+    if (t == ipc::msg::kGetState) return Reply(req, 0, g_manager->Status());
+    if (t == ipc::msg::kEnter) return g_manager->Enter() ? Reply(req, 0, g_manager->Status()) : Reply(req, 500, {}, "enter failed");
+    if (t == ipc::msg::kExit || t == ipc::msg::kRestore) {
+        PostMessageW(g_window, WM_CLOSE, 0, 0);  // exit runs after this reply is sent
+        return Reply(req, 0, self);
+    }
+    if (t == "debug_hang" && CurrentProfile().IsTest()) {
+        // Test hook (never in production profile): freeze the UI thread so the
+        // watchdog's heartbeat timeout can be exercised.
+        const auto* p = req.Find("payload");
+        const auto* ms = p ? p->Find("ms") : nullptr;
+        Sleep(static_cast<DWORD>(ms ? ms->AsInt(60000) : 60000));
+        return Reply(req, 0);
+    }
+    return Reply(req, 501, {}, "unsupported request type");
+}
+
+LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
+    if (g_taskbarCreated && msg == g_taskbarCreated) {
+        if (g_manager) g_manager->OnTaskbarCreated();
+        // Explorer keeps creating things for a moment after the broadcast.
+        SetTimer(h, kTimerRehideEarly, 250, nullptr);
+        SetTimer(h, kTimerRehideLate, 1000, nullptr);
+        return 0;
+    }
+    switch (msg) {
+        case WM_TIMER:
+            if (!g_manager) break;
+            if (wp == kTimerTick) {
+                g_manager->Heartbeat();
+                g_manager->Reconcile();
+            } else if (wp == kTimerRehideEarly || wp == kTimerRehideLate) {
+                KillTimer(h, wp);
+                g_manager->Reconcile();
+            }
+            return 0;
+        case WM_DISPLAYCHANGE:
+        case WM_SETTINGCHANGE:
+            if (g_manager) g_manager->Reconcile();
+            break;
+        case WM_QUERYENDSESSION:
+            return TRUE;
+        case WM_ENDSESSION:
+            // Log off / shutdown: leave Velora Mode cleanly so auto-hide is not persisted.
+            if (wp && g_manager) g_manager->Exit();
+            return 0;
+        case WM_CLOSE:
+            PostQuitMessage(0);
+            return 0;
+        default:
+            break;
+    }
+    return DefWindowProcW(h, msg, wp, lp);
+}
+
+// `velora-shell --exit`: ask the running shell to leave Velora Mode and wait for it.
+int ExitRunningShell() {
+    std::string resp;
+    if (!ipc::Call(ShellPipeName(), ipc::MakeMessage("request", ipc::msg::kExit, 1), &resp, 3000)) return 1;
+    auto r = json::Parse(resp);
+    const json::Value* payload = r ? r->Find("payload") : nullptr;
+    const json::Value* pid = payload ? payload->Find("pid") : nullptr;
+    if (!pid) return 0;
+    HANDLE h = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(pid->AsInt()));
+    if (h) {
+        WaitForSingleObject(h, 10000);
+        CloseHandle(h);
+    }
+    return 0;
+}
+
+}  // namespace
+
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    log::Init("velora-shell");
+
+    bool exitRequest = false, recoverOnly = false;
+    int argc = 0;
+    if (LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc)) {
+        for (int i = 1; i < argc; ++i) {
+            if (std::wstring(argv[i]) == L"--exit") exitRequest = true;
+            else if (std::wstring(argv[i]) == L"--recover-only") recoverOnly = true;
+        }
+        LocalFree(argv);
+    }
+    if (exitRequest) return ExitRunningShell();
+
+    if (CurrentProfile().IsTest() && DataDir().empty()) {
+        log::Error("test profile without VELORA_DATA_DIR; refusing to start");
+        return 3;
+    }
+
+    // Single instance: the first pipe instance is ours or nobody's.
+    ipc::PipeServer server;
+    if (!recoverOnly && !server.Start(ShellPipeName(), HandleRequest)) {
+        log::Warn("velora-shell already running");
+        return 0;
+    }
+
+    // A dirty marker means a previous session did not exit cleanly: restore
+    // Windows before anything else (CLAUDE.md §4).
+    if (DirtyMarkerExists(DirtyMarkerPath())) {
+        log::Warn("startup recovery: dirty marker found; restoring Windows before anything else");
+        sw::RestoreOptions o;
+        o.terminateShell = true;
+        o.reason = "startup recovery";
+        sw::RestoreWindowsDesktop(o);
+    }
+    if (recoverOnly) return 0;
+
+    WNDCLASSEXW wc{sizeof wc};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = instance;
+    wc.lpszClassName = L"VeloraShellMain";
+    RegisterClassExW(&wc);
+    // A hidden *top-level* window: broadcast messages (TaskbarCreated) skip message-only windows.
+    g_window = CreateWindowExW(WS_EX_TOOLWINDOW, wc.lpszClassName, L"Velora", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr,
+                               instance, nullptr);
+    if (!g_window) {
+        log::Error("cannot create main window");
+        return 2;
+    }
+    g_taskbarCreated = RegisterWindowMessageW(CurrentProfile().taskbarCreatedMessage.c_str());
+
+    EventBus bus;
+    sw::SwitchManager manager(bus, instance);
+    manager.SetFatalHandler([] { PostMessageW(g_window, WM_CLOSE, 0, 0); });
+    g_manager = &manager;
+
+    if (!manager.Enter()) {
+        log::Error("enter failed; Windows left untouched");
+        g_manager = nullptr;
+        return 2;
+    }
+    SetTimer(g_window, kTimerTick, ipc::kHeartbeatIntervalMs, nullptr);
+
+    bool quit = false;
+    while (!quit) {
+        auto handles = server.WaitHandles();
+        MsgWaitForMultipleObjectsEx(static_cast<DWORD>(handles.size()), handles.data(), INFINITE, QS_ALLINPUT,
+                                    MWMO_INPUTAVAILABLE);
+        server.Pump();
+        MSG m;
+        while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
+            if (m.message == WM_QUIT) {
+                quit = true;
+                break;
+            }
+            TranslateMessage(&m);
+            DispatchMessageW(&m);
+        }
+    }
+
+    KillTimer(g_window, kTimerTick);
+    manager.Exit();
+    g_manager = nullptr;
+    DestroyWindow(g_window);
     return 0;
 }

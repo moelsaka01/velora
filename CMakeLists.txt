@@ -62,7 +62,12 @@ add_executable(core_test tests/core_test.cpp)
 target_link_libraries(core_test PRIVATE velora_core)
 add_test(NAME core_test COMMAND core_test)
 
-# Binaries (empty skeletons). Resident: shell, watchdog. On-demand: files, settings.
+# switch/: enter/exit, appbar, taskbar helpers, restore (shared by shell and watchdog).
+add_library(velora_switch STATIC
+  src/switch/taskbar.cpp src/switch/restore.cpp src/switch/appbar.cpp src/switch/switch_manager.cpp)
+target_link_libraries(velora_switch PUBLIC velora_core velora_tokens shcore)
+
+# Binaries. Resident: shell, watchdog. On-demand: files, settings.
 function(velora_add_app target source)
   add_executable(${target} WIN32 ${source})
   target_link_libraries(${target} PRIVATE velora_version velora_contracts velora_tokens)
@@ -73,3 +78,13 @@ velora_add_app(velora-shell    src/main.cpp)
 velora_add_app(velora-watchdog watchdog/main.cpp)
 velora_add_app(velora-files    apps/files/main.cpp)
 velora_add_app(velora-settings apps/settings/main.cpp)
+target_link_libraries(velora-shell    PRIVATE velora_switch)
+target_link_libraries(velora-watchdog PRIVATE velora_switch)
+
+# Day-2 safety gate (hermetic: fake taskbar windows, private data dir). See tests/switch_gate_test.cpp.
+add_executable(switch_gate_test tests/switch_gate_test.cpp)
+target_link_libraries(switch_gate_test PRIVATE velora_switch)
+add_dependencies(switch_gate_test velora-shell velora-watchdog)
+add_test(NAME switch_gate
+  COMMAND switch_gate_test $<TARGET_FILE:velora-shell> $<TARGET_FILE:velora-watchdog> --out ${CMAKE_BINARY_DIR}/switch_gate_results.json)
+set_tests_properties(switch_gate PROPERTIES TIMEOUT 900)
