@@ -23,6 +23,13 @@ public:
     // Velora Mode rather than run unprotected.
     void SetFatalHandler(std::function<void()> fn) { onFatal_ = std::move(fn); }
 
+    // UI owner hooks (menu bar / Dock, owner B). Must be set before Enter(). The menu bar
+    // appbar always exists; the Dock appbar only when SetDockOptions was called.
+    void SetMenuBarOptions(AppBarOptions o) { menuBarOptions_ = std::move(o); }
+    void SetDockOptions(AppBarOptions o, float reservedDip) { dockOptions_ = std::move(o); dockReservedDip_ = reservedDip; dockEnabled_ = true; }
+    AppBar& MenuBarBar() { return bar_; }
+    AppBar& DockBar() { return dock_; }
+
     // false => nothing was changed (everything rolled back).
     bool Enter();
     void Exit();  // idempotent
@@ -48,7 +55,11 @@ private:
 
     EventBus& bus_;
     HINSTANCE instance_;
-    AppBar bar_;
+    AppBar bar_;   // top: menu bar
+    AppBar dock_;  // bottom: Dock (optional)
+    AppBarOptions menuBarOptions_, dockOptions_;
+    float dockReservedDip_ = 0;
+    bool dockEnabled_ = false;
     bool entered_ = false;
     bool entering_ = false;                 // inside Enter(): TaskbarCreated is queued
     bool pendingTaskbarCreated_ = false;

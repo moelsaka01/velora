@@ -7,6 +7,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 
 #include "core/contracts/state.h"
 #include "core/win.h"
@@ -14,6 +15,20 @@
 namespace velora::sw {
 
 enum class Edge { Top, Bottom };
+
+// Optional customisation used by the menu bar and the Dock (owner B). The appbar
+// keeps owning registration, work-area reservation and recovery; the UI owner
+// only draws and handles input.
+struct AppBarOptions {
+    // WS_EX_NOREDIRECTIONBITMAP, required for a window drawn by render::RenderHost.
+    bool composition = false;
+    // Sees every message after the appbar callback message; return true (and set
+    // `result`) to consume it.
+    std::function<bool(HWND, UINT, WPARAM, LPARAM, LRESULT&)> hook;
+    // Window rectangle (pixels) inside the reserved strip; the strip itself is still
+    // the full edge, so the Dock can float as a pill in a reserved band.
+    std::function<RECT(const RECT& reserved, UINT dpi)> placement;
+};
 
 class AppBar {
 public:
@@ -24,7 +39,8 @@ public:
 
     // Creates the window and registers it. Returns false if registration failed
     // (e.g. no Explorer tray); the window is then destroyed (caller degrades).
-    bool Create(HINSTANCE instance, HMONITOR monitor, Edge edge, float thicknessDip, std::uint32_t argb);
+    bool Create(HINSTANCE instance, HMONITOR monitor, Edge edge, float thicknessDip, std::uint32_t argb,
+                AppBarOptions options = {});
     void Destroy();  // ABM_REMOVE + DestroyWindow; idempotent
 
     // After Explorer restarted: registrations were lost, register again.
@@ -35,7 +51,9 @@ public:
     bool IsRegistered() const { return registered_; }
     int RegistrationCount() const { return registrations_; }
     HWND Hwnd() const { return hwnd_; }
-    RECT Rect() const { return rect_; }
+    RECT Rect() const { return rect_; }  // reserved strip (pixels)
+    HMONITOR Monitor() const { return monitor_; }
+    UINT Dpi() const;
 
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -55,6 +73,7 @@ private:
     bool inSetPos_ = false;
     int registrations_ = 0;
     RECT rect_{};
+    AppBarOptions options_;
 };
 
 // Recovery: ABM_REMOVE for appbar windows a dead shell registered (Explorer may

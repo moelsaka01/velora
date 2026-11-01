@@ -31,8 +31,10 @@ ATOM RegisterClassOnce(HINSTANCE inst) {
 
 }  // namespace
 
-bool AppBar::Create(HINSTANCE instance, HMONITOR monitor, Edge edge, float thicknessDip, std::uint32_t argb) {
+bool AppBar::Create(HINSTANCE instance, HMONITOR monitor, Edge edge, float thicknessDip, std::uint32_t argb,
+                    AppBarOptions options) {
     if (hwnd_) return true;
+    options_ = std::move(options);
     if (!RegisterClassOnce(instance)) return false;
     monitor_ = monitor ? monitor : MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
     edge_ = edge;
@@ -41,7 +43,9 @@ bool AppBar::Create(HINSTANCE instance, HMONITOR monitor, Edge edge, float thick
     callbackMessage_ = RegisterWindowMessageW(L"VeloraAppBarMessage");
 
     // No WS_EX_APPWINDOW: stays out of the taskbar/Alt+Tab. NOACTIVATE: never steals focus.
-    hwnd_ = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE, kClassName, L"Velora AppBar", WS_POPUP,
+    DWORD ex = WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE;
+    if (options_.composition) ex |= WS_EX_NOREDIRECTIONBITMAP;
+    hwnd_ = CreateWindowExW(ex, kClassName, L"Velora AppBar", WS_POPUP,
                             0, 0, 1, 1, nullptr, nullptr, instance, this);
     if (!hwnd_) {
         log::Error("appbar: CreateWindowEx failed");
@@ -97,6 +101,12 @@ bool AppBar::Reregister() {
     return Register();
 }
 
+UINT AppBar::Dpi() const {
+    UINT x = 96, y = 96;
+    if (monitor_) GetDpiForMonitor(monitor_, MDT_EFFECTIVE_DPI, &x, &y);
+    return x;
+}
+
 void AppBar::Reposition() {
     if (registered_) SetPos();
 }
@@ -128,7 +138,8 @@ void AppBar::SetPos() {
     SHAppBarMessage(ABM_SETPOS, &abd);
 
     rect_ = abd.rc;
-    SetWindowPos(hwnd_, HWND_TOPMOST, rect_.left, rect_.top, rect_.right - rect_.left, rect_.bottom - rect_.top,
+    RECT w = options_.placement ? options_.placement(rect_, dpiX) : rect_;
+    SetWindowPos(hwnd_, HWND_TOPMOST, w.left, w.top, w.right - w.left, w.bottom - w.top,
                  SWP_NOACTIVATE | SWP_SHOWWINDOW);
     inSetPos_ = false;
 }
@@ -181,11 +192,15 @@ LRESULT AppBar::OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
         }
         return 0;
     }
+    if (options_.hook) {
+        LRESULT r = 0;
+        if (options_.hook(hwnd_, msg, wp, lp, r)) return r;
+    }
     switch (msg) {
         case WM_ERASEBKGND: {
             RECT rc;
             GetClientRect(hwnd_, &rc);
-            FillRect(reinterpret_cast<HDC>(wp), &rc, brush_);
+            if (brush_ && !options_.composition) FillRect(reinterpret_cast<HDC>(wp), &rc, brush_);
             return 1;
         }
         case WM_MOUSEACTIVATE:

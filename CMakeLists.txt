@@ -78,7 +78,7 @@ velora_add_app(velora-shell    src/main.cpp)
 velora_add_app(velora-watchdog watchdog/main.cpp)
 velora_add_app(velora-files    apps/files/main.cpp)
 velora_add_app(velora-settings apps/settings/main.cpp)
-target_link_libraries(velora-shell    PRIVATE velora_switch)
+target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui)
 target_link_libraries(velora-watchdog PRIVATE velora_switch)
 
 # Test-only builds of the shell and watchdog (VELORA_TESTING compiles the test hooks in:
@@ -91,6 +91,7 @@ foreach(t velora-shell-testing velora-watchdog-testing)
   target_link_libraries(${t} PRIVATE velora_switch)
   target_compile_definitions(${t} PRIVATE VELORA_TESTING)
 endforeach()
+target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui)
 set_target_properties(velora-shell-testing PROPERTIES OUTPUT_NAME velora-shell RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 set_target_properties(velora-watchdog-testing PROPERTIES OUTPUT_NAME velora-watchdog RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 
@@ -129,3 +130,18 @@ target_link_libraries(velora_render PUBLIC velora_core velora_tokens d3d11 dxgi 
 add_executable(render_host_test tests/render_host_test.cpp)
 target_link_libraries(render_host_test PRIVATE velora_render)
 add_test(NAME render_host_test COMMAND render_host_test)
+
+# ui/: shared helpers for the shell UI (theme, DirectWrite, icon store). Owner B.
+add_library(velora_ui STATIC src/ui/ui_common.cpp)
+target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32)
+
+# menubar/: global menu bar drawn into the top appbar. Owner B.
+add_library(velora_menubar STATIC src/menubar/menubar.cpp)
+target_link_libraries(velora_menubar PUBLIC velora_ui velora_switch velora_windows velora_version powrprof)
+add_executable(menubar_test tests/menubar_test.cpp)
+target_link_libraries(menubar_test PRIVATE velora_menubar)
+add_test(NAME menubar_test COMMAND menubar_test)
+
+add_executable(debounce_test tests/debounce_test.cpp)
+target_link_libraries(debounce_test PRIVATE velora_contracts)
+add_test(NAME debounce_test COMMAND debounce_test)
