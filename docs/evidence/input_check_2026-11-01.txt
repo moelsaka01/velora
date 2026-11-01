@@ -1,0 +1,30 @@
+[22:23:53] before keys logically down: none
+[22:23:53] before PrintScreenKeyForSnippingEnabled=(unset)
+[22:23:53] before velora processes: 
+[22:23:53] before capture processes: SnippingTool:12136
+[22:23:56] before PrintScreen: PASS (snipping process started)
+[22:24:18] before Win+Shift+S: FAIL (no reaction in 15 s)
+[22:26:19] during keys logically down: none
+[22:26:19] during PrintScreenKeyForSnippingEnabled=(unset)
+[22:26:19] during velora processes: velora-shell:21176,velora-watchdog:12860
+[22:26:19] during capture processes: SnippingTool:12136,SnippingTool:19316
+[22:26:33] during keys logically down: none
+[22:26:33] during PrintScreenKeyForSnippingEnabled=(unset)
+[22:26:33] during velora processes: velora-shell:21176,velora-watchdog:12860
+[22:26:33] during capture processes: SnippingTool:12136,SnippingTool:19316
+[22:26:36] during PrintScreen: FAIL (no reaction in 15 s)
+[22:26:46] during PrintScreen: PASS (snipping process started)
+[22:26:46] during Win+Shift+S: PASS (snipping process started)
+[22:26:54] during Win+Shift+S: PASS (snipping process started)
+[22:38:36] after  keys logically down: RETURN
+[22:38:36] after  PrintScreenKeyForSnippingEnabled=(unset)
+[22:38:36] after  velora processes: 
+[22:38:36] after  capture processes: SnippingTool:4492,SnippingTool:12136
+[22:38:43] after  PrintScreen: PASS (snipping process started)
+[22:38:50] after  Win+Shift+S: PASS (clipboard changed)
+[22:42:33] during keys logically down: none
+[22:42:33] during PrintScreenKeyForSnippingEnabled=(unset)
+[22:42:33] during velora processes: velora-shell:21124,velora-watchdog:8296
+[22:42:33] during capture processes: SnippingTool:12136
+[22:42:36] during PrintScreen: PASS (snipping process started)
+[22:42:44] during Win+Shift+S: PASS (clipboard changed)
