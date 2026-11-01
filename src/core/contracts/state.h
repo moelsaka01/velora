@@ -36,6 +36,9 @@ struct SwitchState {
     // the shell process as a FILETIME tick count. Recovery uses it with shellPid
     // so a reused PID is never mistaken for the shell. 0 = unknown.
     std::uint64_t shellStartTime = 0;
+    // Added within the sprint (optional, backward compatible): HWNDs of the appbars
+    // the shell registered, so recovery can ABM_REMOVE them explicitly.
+    std::vector<std::uint64_t> appbarHwnds;
 };
 
 }  // namespace velora

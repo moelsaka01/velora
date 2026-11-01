@@ -7,6 +7,7 @@
 #include "core/log.h"
 #include "core/runtime.h"
 #include "core/state_store.h"
+#include "switch/appbar.h"
 #include "switch/taskbar.h"
 
 namespace velora::sw {
@@ -49,12 +50,25 @@ RestoreResult RestoreWindowsDesktop(const RestoreOptions& opt) {
     ULONGLONG t0 = GetTickCount64();
     log::Info(std::string("restore begin: ") + opt.reason);
 
-    auto state = LoadState(StatePath());
+    // state.json is only meaningful while the dirty marker exists (the marker is the
+    // single source of truth for "a session is, or crashed while, active").
+    const auto markerPath = DirtyMarkerPath();
+    const auto statePath = StatePath();
+    const bool dirty = DirtyMarkerExists(markerPath);
+    std::optional<SwitchState> state;
+    if (dirty) {
+        state = LoadState(statePath);
+        if (!state) log::Warn("restore: no readable state.json; applying safe defaults");
+    } else {
+        log::Info("restore: no dirty marker; ignoring any state.json");
+    }
     r.hadState = state.has_value();
-    if (!state) log::Warn("restore: no readable state.json; applying safe defaults");
 
     // 1. The shell must not be alive to re-hide the taskbar behind us.
-    if (opt.terminateShell && state) r.terminatedShell = TerminateRecordedShell(*state);
+    if (opt.terminateShell && state) {
+        r.terminatedShell = TerminateRecordedShell(*state);
+        RemoveRecordedAppbars(*state);  // Explorer may not have noticed the dead appbar yet
+    }
 
     // 2. Auto-hide back to what it was (persistent Explorer setting!).
     if (state) SetTaskbarAutoHide(state->taskbarAutoHide);
@@ -64,12 +78,31 @@ RestoreResult RestoreWindowsDesktop(const RestoreOptions& opt) {
     r.taskbarsVisible = WaitTaskbarsVisible(true, 800);
     r.taskbarsMs = static_cast<DWORD>(GetTickCount64() - t0);
     if (!r.taskbarsVisible) log::Error("restore: taskbar windows did not become visible within 800 ms");
+    if (opt.requireTaskbar && !r.taskbarsVisible) {
+        // Pending, not done: keep the marker and state.json so the retry can finish the job.
+        r.pending = true;
+        r.totalMs = static_cast<DWORD>(GetTickCount64() - t0);
+        log::Warn("restore pending: no taskbar window yet; marker and state kept");
+        return r;
+    }
 
-    // 4. Work areas: Explorer drops dead appbars itself, but give it a moment
-    //    and only then correct what is still wrong.
+    // 4. Work areas: Explorer drops dead appbars itself, but give it a moment, correct
+    //    what is still wrong, and (recovery) verify again for up to 500 ms.
     if (state) {
         Sleep(50);
         r.workAreasReclaimed = ReclaimWorkAreas(*state);
+        r.workAreasOk = WorkAreasMatch(*state);
+        if (!r.workAreasOk && opt.terminateShell) {
+            for (int i = 0; i < 10 && !r.workAreasOk; ++i) {
+                Sleep(50);
+                r.workAreasOk = WorkAreasMatch(*state);
+            }
+            if (!r.workAreasOk) {
+                r.workAreasReclaimed += ReclaimWorkAreas(*state);
+                r.workAreasOk = WorkAreasMatch(*state);
+            }
+            if (!r.workAreasOk) log::Error("restore: work area still differs from the recorded one");
+        }
     }
 
     // 5. Focus (normal exit only).
@@ -79,8 +112,12 @@ RestoreResult RestoreWindowsDesktop(const RestoreOptions& opt) {
     }
 
     // 6. Last: the marker. Until it is gone, recovery stays armed.
-    r.markerRemoved = RemoveDirtyMarker(DirtyMarkerPath());
+    r.markerRemoved = RemoveDirtyMarker(markerPath);
     if (!r.markerRemoved) log::Error("restore: could not remove dirty marker");
+    // Consumed: with no marker it must never be applied again.
+    if (r.markerRemoved && !statePath.empty() && !DeleteFileW(statePath.c_str()) &&
+        GetLastError() != ERROR_FILE_NOT_FOUND && GetLastError() != ERROR_PATH_NOT_FOUND)
+        log::Warn("restore: could not delete state.json");
 
     r.totalMs = static_cast<DWORD>(GetTickCount64() - t0);
     log::Info("restore done in " + std::to_string(r.totalMs) + " ms (taskbars visible after " +

@@ -2,7 +2,9 @@
 //
 //   --watch <shellPid>  normal mode, started by velora-shell
 //   --restore           restore Windows now (Start menu "Restore Windows Desktop")
-//   --login-check       at login: restore only if a dirty marker is left over
+//   --login-check       at login: restore only if a dirty marker is left over.
+//                       Exit 0 = restored or nothing to do, 1 = failed, 3 = pending
+//                       (no taskbar window appeared; marker kept for the next try)
 //
 // The watchdog is *armed* from the shell's hello (pid must match --watch) until
 // the shell's synchronous "disarm". It restores Windows and terminates the shell
@@ -36,14 +38,34 @@ constexpr int kHotkeyId = 1;
 constexpr DWORD kStartupGraceMs = 5000;  // shell must say hello within this
 constexpr DWORD kMaxWaitMs = 250;        // upper bound between wake-ups; deadlines wake us exactly
 
+constexpr int kExitPending = 3;
+
 bool g_emergency = false;
+bool g_retryNow = false;       // login check: Explorer announced a new taskbar
+UINT g_taskbarCreated = 0;
 
 LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_HOTKEY && wp == kHotkeyId) {
         g_emergency = true;
         return 0;
     }
+    if (g_taskbarCreated && msg == g_taskbarCreated) {
+        g_retryNow = true;
+        return 0;
+    }
     return DefWindowProcW(h, msg, wp, lp);
+}
+
+// Hidden *top-level* window: broadcast messages (TaskbarCreated) skip message-only windows.
+HWND MakeWindow() {
+    HINSTANCE inst = GetModuleHandleW(nullptr);
+    WNDCLASSEXW wc{sizeof wc};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = inst;
+    wc.lpszClassName = L"VeloraWatchdogWnd";
+    RegisterClassExW(&wc);
+    return CreateWindowExW(WS_EX_TOOLWINDOW, wc.lpszClassName, L"Velora Watchdog", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr,
+                           inst, nullptr);
 }
 
 int Restore(const char* reason, bool terminateShell) {
@@ -54,13 +76,65 @@ int Restore(const char* reason, bool terminateShell) {
     return r.markerRemoved && r.taskbarsVisible ? 0 : 1;
 }
 
+// Test profile only: shorten the login-check waits (VELORA_TEST_LOGIN_<name>_MS).
+DWORD LoginMs(const wchar_t* testVar, DWORD production) {
+    if (!CurrentProfile().IsTest()) return production;
+    wchar_t buf[16] = {};
+    if (!GetEnvironmentVariableW(testVar, buf, 16)) return production;
+    return static_cast<DWORD>(_wtoi(buf));
+}
+
 int LoginCheck() {
     if (!DirtyMarkerExists(DirtyMarkerPath())) return 0;
     log::Warn("login check: dirty marker found");
-    // Explorer may still be starting; give it a few seconds to create its tray
-    // (test profile: the fakes are already there).
-    for (int i = 0; i < 100 && sw::FindTrayWindows().empty(); ++i) Sleep(100);
-    return Restore("login restore", true);
+    const DWORD initialWaitMs = LoginMs(L"VELORA_TEST_LOGIN_WAIT_MS", 10000);
+    const DWORD retryMs = LoginMs(L"VELORA_TEST_LOGIN_RETRY_MS", 5000);
+    const DWORD giveUpMs = LoginMs(L"VELORA_TEST_LOGIN_MAX_MS", 120000);
+
+    HWND window = MakeWindow();  // receives TaskbarCreated while we wait
+    g_taskbarCreated = RegisterWindowMessageW(CurrentProfile().taskbarCreatedMessage.c_str());
+
+    // Explorer may still be starting; give it a few seconds to create its tray.
+    ULONGLONG t0 = GetTickCount64();
+    while (GetTickCount64() - t0 < initialWaitMs && sw::FindTrayWindows().empty()) Sleep(50);
+
+    sw::RestoreOptions o;
+    o.terminateShell = true;
+    o.requireTaskbar = true;
+    o.reason = "login restore";
+    auto r = sw::RestoreWindowsDesktop(o);
+
+    // No taskbar yet: keep the marker, retry on TaskbarCreated or every retryMs, up to giveUpMs.
+    ULONGLONG start = GetTickCount64(), nextTry = start + retryMs;
+    while (r.pending && GetTickCount64() - start < giveUpMs) {
+        ULONGLONG now = GetTickCount64();
+        DWORD wait = nextTry > now ? static_cast<DWORD>(std::min<ULONGLONG>(nextTry - now, 250)) : 0;
+        MsgWaitForMultipleObjectsEx(0, nullptr, wait, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+        MSG m;
+        while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&m);
+            DispatchMessageW(&m);
+        }
+        if (!DirtyMarkerExists(DirtyMarkerPath())) {
+            log::Info("login check: marker removed by someone else; done");
+            r.pending = false;
+            r.markerRemoved = true;
+            r.taskbarsVisible = true;
+            break;
+        }
+        if (g_retryNow || GetTickCount64() >= nextTry) {
+            g_retryNow = false;
+            nextTry = GetTickCount64() + retryMs;
+            log::Info("login check: retrying restore");
+            r = sw::RestoreWindowsDesktop(o);
+        }
+    }
+    if (window) DestroyWindow(window);
+    if (r.pending) {
+        log::Error("login check: still pending after " + std::to_string(giveUpMs) + " ms; marker kept for the next attempt");
+        return kExitPending;
+    }
+    return r.markerRemoved && r.taskbarsVisible ? 0 : 1;
 }
 
 // Test hook (test profile only, like the shell's debug_hang): a hello is rejected
@@ -144,14 +218,7 @@ int Watch(DWORD shellPid) {
         return 0;
     }
 
-    HINSTANCE inst = GetModuleHandleW(nullptr);
-    WNDCLASSEXW wc{sizeof wc};
-    wc.lpfnWndProc = WndProc;
-    wc.hInstance = inst;
-    wc.lpszClassName = L"VeloraWatchdogWnd";
-    RegisterClassExW(&wc);
-    HWND window = CreateWindowExW(WS_EX_TOOLWINDOW, wc.lpszClassName, L"Velora Watchdog", WS_POPUP, 0, 0, 0, 0, nullptr,
-                                  nullptr, inst, nullptr);
+    HWND window = MakeWindow();
     // Emergency hotkey lives here, not in the shell, so it works with a frozen shell.
     if (!window || !RegisterHotKey(window, kHotkeyId, MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, VK_ESCAPE))
         log::Warn("emergency hotkey Ctrl+Alt+Shift+Esc could not be registered: error " + std::to_string(GetLastError()));

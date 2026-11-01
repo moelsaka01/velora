@@ -24,6 +24,8 @@ bool HasRealTaskbar();
 
 // Non-blocking (SWP_ASYNCWINDOWPOS): a hung Explorer cannot hang the caller.
 void SetTaskbarsVisible(bool visible);
+// True once every tray window is in the wanted state. No tray windows at all is
+// NOT success (nothing is visible/hidden; Explorer may not have started yet).
 bool WaitTaskbarsVisible(bool visible, DWORD timeoutMs);
 
 // ABM_GETSTATE / ABM_SETSTATE ABS_AUTOHIDE. No-ops in a test profile.
@@ -34,6 +36,8 @@ std::vector<MonitorState> SnapshotMonitors();
 // Puts a monitor's work area back to the recorded value if it differs and the
 // recorded rect still fits the monitor. Returns the number of monitors changed.
 int ReclaimWorkAreas(const SwitchState& state);
+// True if every monitor whose recorded work area still fits it has that work area.
+bool WorkAreasMatch(const SwitchState& state);
 
 std::wstring CurrentWallpaper();
 std::uint64_t ProcessStartTime(HANDLE process);  // FILETIME ticks, 0 on failure

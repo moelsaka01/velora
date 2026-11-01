@@ -8,6 +8,7 @@
 
 #include <cstdint>
 
+#include "core/contracts/state.h"
 #include "core/win.h"
 
 namespace velora::sw {
@@ -55,5 +56,10 @@ private:
     int registrations_ = 0;
     RECT rect_{};
 };
+
+// Recovery: ABM_REMOVE for appbar windows a dead shell registered (Explorer may
+// not have noticed the process died). Skips handles that are now live windows of
+// another process. Returns the number of removals sent.
+int RemoveRecordedAppbars(const SwitchState& state);
 
 }  // namespace velora::sw

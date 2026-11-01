@@ -15,6 +15,10 @@ struct RestoreOptions {
     bool terminateShell = false;
     // Normal exit only: give focus back to the window that had it before Enter.
     bool restoreForeground = false;
+    // Login/startup recovery: if no taskbar window exists yet (Explorer still starting)
+    // the restore is *pending*: the dirty marker and state.json are kept so it can be
+    // retried, and the result says so instead of reporting success.
+    bool requireTaskbar = false;
     const char* reason = "restore";
 };
 
@@ -23,6 +27,8 @@ struct RestoreResult {
     bool terminatedShell = false;
     bool taskbarsVisible = false;
     bool markerRemoved = false;
+    bool pending = false;     // requireTaskbar and no taskbar window to restore yet
+    bool workAreasOk = true;  // recorded work areas match again (true when nothing recorded)
     int workAreasReclaimed = 0;
     DWORD taskbarsMs = 0;  // until taskbars were visible again
     DWORD totalMs = 0;
