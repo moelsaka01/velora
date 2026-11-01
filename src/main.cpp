@@ -6,17 +6,22 @@
 #include <ShellScalingApi.h>
 #include <shellapi.h>
 
+#include <algorithm>
 #include <string>
 
 #include "core/contracts/ipc.h"
+#include "core/debounce.h"
 #include "core/event_bus.h"
 #include "core/ipc_pipe.h"
 #include "core/json.h"
 #include "core/log.h"
 #include "core/runtime.h"
 #include "core/state_store.h"
+#include "menubar/menubar.h"
 #include "switch/restore.h"
 #include "switch/switch_manager.h"
+#include "ui/ui_common.h"
+#include "windows/window_tracker.h"
 
 namespace {
 
@@ -25,10 +30,12 @@ using namespace velora;
 constexpr UINT_PTR kTimerTick = 1;          // heartbeat + reconcile, 1 Hz
 constexpr UINT_PTR kTimerRehideEarly = 2;   // after TaskbarCreated
 constexpr UINT_PTR kTimerRehideLate = 3;
+constexpr UINT_PTR kTimerTaskbarTrailing = 4;  // trailing run of a TaskbarCreated burst
 
 UINT g_taskbarCreated = 0;
 sw::SwitchManager* g_manager = nullptr;
 HWND g_window = nullptr;
+BurstDebounce g_taskbarDebounce(500);  // Explorer may broadcast TaskbarCreated several times in a burst
 
 std::string Reply(const json::Value& req, int status, const json::Value& payload = {}, const std::string& error = {}) {
     std::string type = "hello";
@@ -78,16 +85,40 @@ std::string HandleRequest(std::string_view raw) {
     return Reply(req, 501, {}, "unsupported request type");
 }
 
+void HandleTaskbarCreated(HWND h) {
+    if (g_manager) g_manager->OnTaskbarCreated();
+    // Explorer keeps creating things for a moment after the broadcast.
+    SetTimer(h, kTimerRehideEarly, 250, nullptr);
+    SetTimer(h, kTimerRehideLate, 1000, nullptr);
+}
+
 LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (g_taskbarCreated && msg == g_taskbarCreated) {
-        if (g_manager) g_manager->OnTaskbarCreated();
-        // Explorer keeps creating things for a moment after the broadcast.
-        SetTimer(h, kTimerRehideEarly, 250, nullptr);
-        SetTimer(h, kTimerRehideLate, 1000, nullptr);
+        ULONGLONG now = GetTickCount64();
+        switch (g_taskbarDebounce.OnEvent(now)) {
+            case BurstDebounce::Action::RunNow:
+                HandleTaskbarCreated(h);
+                break;
+            case BurstDebounce::Action::Schedule:
+                SetTimer(h, kTimerTaskbarTrailing,
+                         static_cast<UINT>(std::max<std::uint64_t>(1, g_taskbarDebounce.TrailingDelayMs(now))), nullptr);
+                break;
+            case BurstDebounce::Action::Drop:
+                break;
+        }
+        return 0;
+    }
+    if (msg == ui::kMsgIconsLoaded) {
+        ui::IconStore::Get().Dispatch();
         return 0;
     }
     switch (msg) {
         case WM_TIMER:
+            if (wp == kTimerTaskbarTrailing) {
+                KillTimer(h, wp);
+                if (g_taskbarDebounce.OnTimer(GetTickCount64())) HandleTaskbarCreated(h);
+                return 0;
+            }
             if (!g_manager) break;
             if (wp == kTimerTick) {
                 g_manager->Heartbeat();
@@ -137,6 +168,7 @@ int ExitRunningShell() {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     log::Init("velora-shell");
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     bool exitRequest = false, recoverOnly = false;
     int argc = 0;
@@ -190,6 +222,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     sw::SwitchManager manager(bus, instance);
     manager.SetFatalHandler([] { PostMessageW(g_window, WM_CLOSE, 0, 0); });
     g_manager = &manager;
+    ui::IconStore::Get().SetNotifyWindow(g_window);
+
+    win::WindowTracker tracker(bus);
+    menubar::MenuBar::Actions menuActions;
+    menuActions.exitVelora = [] { PostMessageW(g_window, WM_CLOSE, 0, 0); };
+    menuActions.openSettings = [] {
+        auto exe = ExeDir() / L"velora-settings.exe";
+        ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    };
+    menubar::MenuBar menuBar(bus, tracker, menuActions);
+    manager.SetMenuBarOptions(menuBar.Options());
+    bus.Subscribe(EventType::Entered, [&](const Event&) { menuBar.Attach(manager.MenuBarBar().Hwnd()); });
+    bus.Subscribe(EventType::Exiting, [&](const Event&) { menuBar.Detach(); });
 
     if (!manager.Enter()) {
         log::Error("enter failed; Windows left untouched");
@@ -199,6 +244,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         return 2;
     }
     SetTimer(g_window, kTimerTick, ipc::kHeartbeatIntervalMs, nullptr);
+    tracker.Start();
 
     bool quit = false;
     while (!quit) {
@@ -218,8 +264,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
 
     KillTimer(g_window, kTimerTick);
+    tracker.Stop();
     manager.Exit();
     g_manager = nullptr;
+    ui::IconStore::Get().Shutdown();
     DestroyWindow(g_window);
     return 0;
 }

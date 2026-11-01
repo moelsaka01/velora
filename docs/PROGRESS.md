@@ -8,7 +8,7 @@ Status: not started | in progress | gated | passed | deferred
 | switch | gated | Day-2 safety gate PASS locally (117/117 checks on main 364f267, see "Day 2 review fixes"; original run 55/55); CI result recorded on the PRs |
 | render | passed (base) | tokens + animation engine (animation_test) + RenderHost (render_host_test: D3D11 + composition swap chain + D2D draw/present/resize, DWM Mica/rounded-corner helpers). No consumers yet (dock/menubar are Day 3) |
 | dock | not started | |
-| menubar | not started | |
+| menubar | in progress (G1 partial) | Velora menu, active app, battery + clock, light/dark, drawn in the top appbar; menubar_test + live run on this machine. **Tray-icon hosting not built (blocked, see Day 3)** |
 | windows | passed (G1 tracking) | window_tracker_test: lifecycle via WinEvents (create/title/minimize/restore/hide/destroy), tool/owned/never-shown windows excluded, own-process skip, fullscreen rect + elevation helpers, live foreground + fullscreen with VELORA_TEST_FOCUS=1 (run once locally: pass). Cloaked path and a real elevated window are unmeasured |
 | overview | not started | |
 | apps | not started | |
@@ -106,3 +106,21 @@ Raw results: `docs/evidence/switch_gate_2026-11-01_main-364f267.json`. Real Expl
 - 117/117 checks, 0 failed. Enter median 231 ms (max 486), exit median 234 ms (max 484); kills 10/10 taskbars back median 42 ms (max 54); hangs 3/3 max 2234 ms; hotkey 23 ms.
 - This supersedes the 110/112 run on 789ca4c above. That failure (`Chrome_WidgetWin_1` window gone between snapshots) was external: since #18 the gate attributes vanished windows, and this run logged `externalLostWindows` 2 and `externalNewWindows` 1 as external instead of failing. Attribution checks pass, including that a vanished test-owned window and the previously focused window are still failures.
 - Still unmeasured: real Explorer restart, real taskbar hide on real monitors, physical Ctrl+Alt+Shift+Esc (covered by the live test).
+
+## Day 3 (owner B, UI)
+Starting commit: `4d6ac80` (main before Day 3). Compat is a separate session.
+
+### menubar (PR feat/menubar)
+- Drawn into the existing top appbar through `AppBarOptions` (composition window + message hook + placement), so appbar registration, work-area reservation and recovery stay owned by switch/. The blank white strip was the GDI brush Day 2 used as a placeholder.
+- G1 items built: active app name (FileDescription, exe stem, or window title for UWP), battery status item (hidden without a battery), clock (re-armed once per minute), Velora menu: About, Settings (launches velora-settings.exe), Apps, Sleep / Restart / Shut Down (each behind a Yes/No confirm; SetSuspendState and ExitWindowsEx without EWX_FORCE), Exit Velora. Light/dark and transparency follow the system settings (re-read on WM_SETTINGCHANGE).
+- **Blocked: tray-icon hosting.** On Windows 11 Explorer owns the notification area and Velora must not replace or inject into Explorer (CLAUDE.md sec. 0.8). The ManagedShell WindowsTray approach only works for a process that *is* the shell (it registers Shell_TrayWnd and receives Shell_NotifyIcon copy-data). Reading Explorer's tray by cross-process memory access is not possible on the XAML tray of this build (26200) and would also be invasive. So no tray icons yet and nothing from ManagedShell was ported for the menu bar (THIRD_PARTY_NOTICES unchanged). Needs a decision: accept Velora-own status items only, or study a supported path.
+- Menus use native Win32 popups (system styling, not Velora-themed). App menus are G2.
+- Unit tests: `menubar_test` (battery text, app display name). Popup menu, power actions and rendering are manual (docs/QA.md); no test calls Sleep / Restart / Shut Down.
+- Live check (this machine, real Explorer): menu bar visible with logo, app name, `100% (charging)` and clock; `velora-shell --exit` returned the taskbar and ended both processes. Screenshot reviewed by eye, not archived.
+- Switch gate with the menu bar and tracker running: see "Switch gate after Day 3" below.
+
+### TaskbarCreated debounce
+- `BurstDebounce` (core/debounce.h, `debounce_test`): the first TaskbarCreated of a burst is handled immediately, later ones inside 500 ms collapse into one trailing run. Lives in the menubar PR because it edits main.cpp together with the tracker wiring (deviation from one-PR-per-module).
+
+### Switch gate after Day 3 (menubar PR build)
+- Local runs against the testing binaries with menu bar + window tracker active: run 1 FAIL (2 of 117 checks; the failing checks were not captured because only the tail of the output was kept), runs 2, 3 and 4 PASS 117/117 (enter median 431 ms / max 688, exit median 265 ms / max 557). The failure is **not reproduced and not explained**; the gate's own output is now kept in full (`build/gate_r*.log`). Open item: re-run on the final Day 3 main and attribute any failure.

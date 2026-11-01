@@ -160,12 +160,16 @@ bool SwitchManager::Enter() {
     }
 
     // 4. Appbar so maximized windows respect Velora's bar. Degrades, never fails Enter.
-    if (!bar_.Create(instance_, nullptr, Edge::Top, tokens::size::kMenuBarHeight, tokens::kLight.surfaceStrong.argb)) {
+    if (!bar_.Create(instance_, nullptr, Edge::Top, tokens::size::kMenuBarHeight, tokens::kLight.surfaceStrong.argb,
+                     menuBarOptions_)) {
         log::Warn("enter: appbar unavailable; continuing without work-area reservation");
     } else {
-        // Recovery ABM_REMOVEs this handle if the shell dies without unregistering.
+        // Recovery ABM_REMOVEs these handles if the shell dies without unregistering.
         state_.appbarHwnds = {static_cast<std::uint64_t>(reinterpret_cast<UINT_PTR>(bar_.Hwnd()))};
-        if (!SaveState(state_, statePath)) log::Warn("enter: could not record the appbar handle in state.json");
+        if (dockEnabled_ && dock_.Create(instance_, nullptr, Edge::Bottom, dockReservedDip_,
+                                         tokens::kLight.surfaceStrong.argb, dockOptions_))
+            state_.appbarHwnds.push_back(static_cast<std::uint64_t>(reinterpret_cast<UINT_PTR>(dock_.Hwnd())));
+        if (!SaveState(state_, statePath)) log::Warn("enter: could not record the appbar handles in state.json");
     }
 
     RememberTrays();
@@ -206,6 +210,7 @@ void SwitchManager::Exit() {
     // away the watchdog must not read that as a crash.
     bool disarmed = Disarm();
 
+    dock_.Destroy();
     bar_.Destroy();
 
     RestoreOptions o;
@@ -230,6 +235,7 @@ void SwitchManager::OnTaskbarCreated() {
     // fallback we applied ourselves needs re-asserting if Explorer reset it.
     if (autoHideFallback_) SetTaskbarAutoHide(true);
     bar_.Reregister();
+    dock_.Reregister();
     RememberTrays();
     bus_.Post(EventType::ExplorerRestarted);
 }
@@ -247,6 +253,7 @@ void SwitchManager::Reconcile() {
             if (!trays.empty()) {
                 log::Info("reconcile: taskbar windows changed; re-registering appbars");
                 bar_.Reregister();
+                dock_.Reregister();
             }
         }
     }
