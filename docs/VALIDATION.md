@@ -12,6 +12,7 @@ Physical and live checks per module, seeded from the evidence in [PROGRESS.md](P
 | apps | index of 191 apps, grid with search drawn live | launching from the grid; MSIX/Store/elevated launches |
 | wallpaper | apply, backup, restore on exit and on crash recovery (1 monitor) | multi-monitor |
 | input safety | code audit of hotkeys/hooks/SendInput/registry/affinity (no persistent write found); `--exit` process check; ⋯ key release + focus guard (unit build only) | **PrintScreen and Win+Shift+S during and after Velora Mode** (tools/input_check.ps1 -Watch, before/during/after; the user presses the keys) - the original failure is unexplained and unreproduced; user reports it cleared after a reboot |
+| icons | `icons_test` on this machine: 191/191 Start apps get an icon via the shell image factory (Chrome, Edge, Steam, Discord, Epic Games Launcher, Calculator [MSIX], Notepad all checked by name); fallback-only run (factory disabled): 91/99 apps that have a file to fall back to | the running-unpinned-Chrome Dock tile in a live session (the "G" tile came from AUMID resolution, fixed in code, not reproduced live); MSIX apps without an exe cannot use the later steps |
 | bench | scripted runs with raw CSVs in `bench/` | clean-boot method; GPU memory; 3-run medians on a second machine |
 | overview, search, files, control, notify, desktops, hotkeys, settings | none | all (modules not built or not yet verified) |
 | compat | none | all |
