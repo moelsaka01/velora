@@ -62,3 +62,16 @@ Runner-ups: Flow.Launcher search ranking (~1 d), SPIRV-Cross (future).
 - voidtools.com SDK terms page; MIT is from the mirror only.
 - Days-saved and dependency figures are estimates.
 - Research stopped; enough evidence to decide.
+
+## 5. DiPlay process lessons (study-only; GPL/AGPL, nothing copied)
+Source: README, CLAUDE.md/AGENTS.md, VALIDATION, PRIVACY, CHANGELOG of shihabal3amri/DiPlay, read via `gh api`.
+1. Adopt: a validation log that says per release what was tested and on what, and names what still needs real hardware.
+2. Adopt: say plainly what was NOT tested; "no full-release acceptance claimed" beats an implied pass.
+3. Adopt: opt-in local diagnostic export, reviewed by the user, never auto-uploaded; tell users redaction is best-effort.
+4. Adopt: a privacy doc listing every network call (what is sent, how often, how to turn it off).
+5. Adopt: agent rules as testable constraints (a test fails when a setting has no category or no translation); prefer a failing test over prose.
+6. Adopt: one canonical place for UI spacing/size values, never ad-hoc literals (matches our design tokens).
+7. Adopt: updates verified by published checksum and user-initiated; production builds only from a clean recorded commit/tree.
+8. Avoid: shipping third-party keys or identities. DiPlay bundles an extractable accessory identity recovered from other vendors' firmware and admits the legal/technical risk. Velora bundles no third-party keys, certificates, tokens or identities; signing keys are ours and never in the repo or installer.
+9. Avoid: long changelog and validation entries that are hard to scan; keep ours tabular and short.
+10. Avoid: crediting contributor-owned device tests as project acceptance; we record who ran what, where, and the machine.

@@ -16,6 +16,8 @@ Deadline: a working release candidate within **8 calendar days**. Correctness an
 6. **Never fabricate** benchmark numbers, compatibility results, or completion states. Unknown means "unmeasured".
 7. **Legal.** No Apple or Microsoft proprietary code, icons, wallpapers, fonts (SF Pro), or binaries. Never disassemble Apple binaries. Clean-room only: public docs, observed behavior, screenshots. GPL code is study-only. The project is Apache-2.0, so copy no GPL code. Keep `THIRD_PARTY_NOTICES.md` updated whenever code is reused.
 8. **Stability rules (never violate):** no admin rights for normal operation; never terminate or replace `explorer.exe`; no registry shell swap; no system-file changes; no disabling of security features or Windows Update; no DLL injection into other processes.
+9. **No borrowed identities.** Never bundle third-party keys, certificates, tokens or device/accessory identities. Signing material is ours, kept out of the repo and the installer.
+10. **Validation log.** Keep `docs/VALIDATION.md` (done / pending live tests per module) in step with PROGRESS.md evidence, and say what was not tested.
 
 ---
 
@@ -120,7 +122,7 @@ Each module has gates. **G1** = minimum to ship; **G2** = target; **G3** = stret
 - **files:** G1 browse drives/folders, open, copy/move/rename, delete to the Recycle Bin, drag-drop in and out, a sidebar (favorites/drives), list/icon/column views, all via IFileOperation. G2 tabs, Quick Look-style preview (Windows preview handlers), tags as a Velora-local DB. **Never** permanently delete without an explicit confirm dialog.
 - **control:** G1 volume, output device, Wi-Fi status + network list (WLAN API), Bluetooth on/off (Radios API), battery, brightness, dark mode, Do Not Disturb (Velora-level). G2 media controls (GlobalSystemMediaTransportControls), display scaling shortcuts.
 - **notify:** G1 Velora's own notifications + a Notification Center panel. G2 **capture system toasts** via `UserNotificationListener`. This requires package identity: ship a **sparse MSIX package with external location**, signed with the release certificate, and request access on first run. If the user denies access, degrade cleanly. Document that some apps' toasts may differ in content.
-- **settings:** G1 appearance, Dock, menu bar, hotkeys, startup, gaming mode, updates, a "Restore Windows" button. All settings live in one JSON in %LOCALAPPDATA%.
+- **settings:** G1 appearance, Dock, menu bar, hotkeys, startup, gaming mode, updates, a "Restore Windows" button. All settings live in one JSON in %LOCALAPPDATA%. Diagnostics export is opt-in, written locally for the user to review, and never auto-sent (backlog: `docs/BACKLOG.md`).
 - **desktops:** G1 the documented `IVirtualDesktopManager` (move/query). G2 create/switch through version-detected undocumented interfaces behind a flag. If the Windows build is unknown, disable it and fall back to simulated keystrokes (Win+Ctrl+arrows).
 - **hotkeys:** Cmd-style mappings are opt-in: Alt↔Win as Cmd, Cmd+Space search, Cmd+Tab app switcher, Ctrl+Up overview, Cmd+Q quit (WM_CLOSE). Don't break Windows shortcuts by default.
 - **gaming mode:** auto-enabled when a fullscreen exclusive or borderless-fullscreen app is foreground (or manually). Disable animations and blur, pause the indexer and thumbnails, hide the bars, drop to minimal timers. Never touch the game process.
