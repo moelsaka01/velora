@@ -32,6 +32,10 @@ struct SwitchState {
     std::uint64_t foregroundHwnd = 0;  // HWND as integer; 0 = none
     std::uint32_t shellPid = 0;
     std::uint32_t watchdogPid = 0;
+    // Added within the sprint (optional, backward compatible): creation time of
+    // the shell process as a FILETIME tick count. Recovery uses it with shellPid
+    // so a reused PID is never mistaken for the shell. 0 = unknown.
+    std::uint64_t shellStartTime = 0;
 };
 
 }  // namespace velora

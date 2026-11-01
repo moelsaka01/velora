@@ -9,3 +9,8 @@ One line per decision: date, decision, reason.
 2026-11-01 | Day-1 research closed; top 5: cairoshell/ManagedShell, LIEF, VirtualDesktopAccessor, PowerToys, Fluent icons | see RESEARCH.md
 2026-11-01 | Design tokens are constexpr, windows.h-free, DIP units; original palette | shared by shell and on-demand apps, no OS assets
 2026-11-01 | Four exes are WIN32-subsystem skeletons linking only header-only interface libs | stack rules: native Win32, no extra runtime deps
+2026-11-01 | Day 2 scope: owner A only (core runtime, switch, watchdog, windows, render base); one PR per module, stacked on main | per task brief
+2026-11-01 | state.h: added optional shellStartTime (FILETIME ticks) | recovery must not mistake a reused PID for the shell; additive, old files still load
+2026-11-01 | JSON and pipe transport are in-house (core/json, core/ipc_pipe), no third-party dep | vcpkg manifest is empty and CI has no vcpkg step; payloads are tiny
+2026-11-01 | IPC pipes are per-user (DACL = current SID only), PIPE_REJECT_REMOTE_CLIENTS, first-instance flag as single-instance check | local-only, authenticated by OS
+2026-11-01 | Test profile (env VELORA_TEST_PROFILE + VELORA_DATA_DIR): fake tray class names, private TaskbarCreated message, data dir and pipes | gate must never hide the real taskbar, overwrite real state.json or broadcast the real TaskbarCreated

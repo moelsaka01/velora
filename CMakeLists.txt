@@ -50,6 +50,18 @@ add_executable(tokens_test tests/tokens_test.cpp)
 target_link_libraries(tokens_test PRIVATE velora_tokens)
 add_test(NAME tokens_test COMMAND tokens_test)
 
+# core/: JSON, state store, IPC pipes, logging, runtime paths (Windows-only static lib).
+add_library(velora_core STATIC
+  src/core/json.cpp src/core/text.cpp src/core/runtime.cpp src/core/log.cpp
+  src/core/state_store.cpp src/core/ipc_pipe.cpp)
+target_include_directories(velora_core PUBLIC src)
+target_compile_definitions(velora_core PUBLIC UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(velora_core PUBLIC velora_contracts advapi32 shell32 ole32 user32)
+
+add_executable(core_test tests/core_test.cpp)
+target_link_libraries(core_test PRIVATE velora_core)
+add_test(NAME core_test COMMAND core_test)
+
 # Binaries (empty skeletons). Resident: shell, watchdog. On-demand: files, settings.
 function(velora_add_app target source)
   add_executable(${target} WIN32 ${source})
