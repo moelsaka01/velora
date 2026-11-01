@@ -86,6 +86,7 @@ private:
     std::map<std::uint64_t, std::wstring> aumidCache_;
     std::map<DWORD, std::wstring> exeCache_;
     std::map<std::wstring, Microsoft::WRL::ComPtr<ID2D1Bitmap>> bitmaps_;
+    ID2D1Bitmap* VeloraBitmap(ID2D1DeviceContext* dc, const D2D1_RECT_F& dipRect);  // the Apps item's icon
     int iconListener_ = 0;
 };
 

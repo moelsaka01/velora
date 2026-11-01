@@ -7,7 +7,7 @@ Physical and live checks per module, seeded from the evidence in [PROGRESS.md](P
 | switch / watchdog | 50 enter/exit cycles, 10 forced shell kills (restore < 1 s), hang, hotkey, login-marker and `--restore` paths; 117/117 checks, raw JSON in `docs/evidence/` | Explorer restart on other Windows builds; log off with the marker set on a clean boot; 2-3 monitors at mixed DPI |
 | core / render | unit tests; D3D11 + composition swap chain draw/present/resize | GPU memory (DXGI) measurement; non-DWM-Mica fallbacks |
 | windows | WinEvent lifecycle, own-process skip, fullscreen detection (live, with `VELORA_TEST_FOCUS=1`) | cloaked (UWP) windows; a real elevated window |
-| dock | drawn live; decision logic, geometry, persistence tests | click paths (launch, activate, minimize) on real windows; per-monitor on 2+ monitors |
+| dock | drawn live; Velora app icon decode/scale at 48-128 px (velora_icon_test: transparent corners, opaque centre, premultiplied); decision logic, geometry, persistence tests | click paths (launch, activate, minimize) on real windows; per-monitor on 2+ monitors |
 | menubar | live in the top appbar; Velora menu, active app, battery, clock | tray-icon hosting (blocked); power menu actions; global app menus (tiers 1-3) |
 | apps | index of 191 apps, grid with search drawn live | launching from the grid; MSIX/Store/elevated launches |
 | wallpaper | apply, backup, restore on exit and on crash recovery (1 monitor) | multi-monitor |

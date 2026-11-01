@@ -49,6 +49,11 @@ struct Pixels {
     std::vector<std::uint8_t> bgra;  // premultiplied, top-down
 };
 
+// Velora's own app icon, decoded from the embedded PNG resource (src/shell.rc) and scaled with a high-quality
+// (Fant) filter to exactly `px` x `px` device pixels. False when the resource is absent (tests, other exes).
+// Needs COM on the calling thread.
+bool LoadVeloraIcon(int px, Pixels* out);
+
 // Asynchronous icon loading (one worker thread, started on the first Request). The pixels
 // of an icon live here once; each window turns them into its own D2D bitmap.
 class IconStore {

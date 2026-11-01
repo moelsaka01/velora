@@ -12,6 +12,7 @@ set(VELORA_VERSION_PATCH ${CMAKE_MATCH_3})
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/vcpkg.json")
 
 project(Velora VERSION ${VELORA_VERSION} LANGUAGES CXX)
+enable_language(RC)
 
 configure_file(src/core/version.h.in "${CMAKE_BINARY_DIR}/generated/core/version.h" @ONLY)
 add_library(velora_version INTERFACE)
@@ -88,6 +89,7 @@ velora_add_app(velora-files    apps/files/main.cpp)
 velora_add_app(velora-settings apps/settings/main.cpp)
 target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper)
 target_link_libraries(velora-watchdog PRIVATE velora_switch)
+target_sources(velora-shell PRIVATE src/shell.rc)  # the Velora app icon (Dock)
 
 # Test-only builds of the shell and watchdog (VELORA_TESTING compiles the test hooks in:
 # hello-rejecting flag file, login-check timing overrides, debug_hang). They are placed in
@@ -99,6 +101,7 @@ foreach(t velora-shell-testing velora-watchdog-testing)
   target_link_libraries(${t} PRIVATE velora_switch)
   target_compile_definitions(${t} PRIVATE VELORA_TESTING)
 endforeach()
+target_sources(velora-shell-testing PRIVATE src/shell.rc)
 target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper)
 set_target_properties(velora-shell-testing PROPERTIES OUTPUT_NAME velora-shell RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 set_target_properties(velora-watchdog-testing PROPERTIES OUTPUT_NAME velora-watchdog RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
@@ -141,7 +144,10 @@ add_test(NAME render_host_test COMMAND render_host_test)
 
 # ui/: shared helpers for the shell UI (theme, DirectWrite, icon store). Owner B.
 add_library(velora_ui STATIC src/ui/ui_common.cpp)
-target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32)
+target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32 windowscodecs)
+add_executable(velora_icon_test tests/velora_icon_test.cpp src/shell.rc)
+target_link_libraries(velora_icon_test PRIVATE velora_ui)
+add_test(NAME velora_icon_test COMMAND velora_icon_test)
 
 # menubar/: global menu bar drawn into the top appbar. Owner B.
 add_library(velora_menubar STATIC src/menubar/menubar.cpp)
