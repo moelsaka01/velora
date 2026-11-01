@@ -132,3 +132,4 @@ Starting commit: `4d6ac80` (main before Day 3). Compat is a separate session.
 - Not built (G2): pages, folders, drag-reorder. Single scrolling page for G1.
 - The shell skips the background scan in the test profile (gate measures switching; the test profile has a private data dir).
 - Memory note: opening the grid raised the shell working set from 57 MB to 146 MB, 126 MB after closing (see the bench section); this is being reduced in the dock PR.
+- Switch gate on the apps build (testing binaries, local): PASS 117/117, full log kept in `build/gate_apps.log`.
