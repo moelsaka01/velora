@@ -13,9 +13,9 @@ Raw tool output: [input_check_2026-11-01.txt](input_check_2026-11-01.txt). Resul
 | 1 | Start Velora | PASS (user): Velora icon is the first Dock tile; Chrome shows its real icon; most other apps show real icons; Files/Settings tiles hidden | user report; **some apps still show fallback icons** (not yet identified, see below) |
 | 2 | `input_check -Phase during -Watch` | PASS (user): PrintScreen 22:26:46, Win+Shift+S 22:26:54 | input_check file, run started 22:26:33 |
 | 3 | Dock activate / minimize / restore | PASS (user) | user report |
-| 4 | ⋯ opens Settings > Taskbar | **not reported** (the yes/no was left as a placeholder) | the shell log of the run could not be read (see below) |
+| 4 | ⋯ opens Settings > Taskbar | **not reported** (the follow-up reply still read "opened Settings > Taskbar / didn't check" without choosing; not assumed) | the shell log of the run could not be read (see below) |
 | 5 | `input_check -Phase during -Watch` again | PASS: PrintScreen 22:42:36, Win+Shift+S 22:42:44 (clipboard changed) | input_check file, second Velora session pids 21124 / 8296; run from the Claude terminal panel |
-| 6 | Exit | exit code **not reported** (placeholder left). The 22:38:36 check shows no `velora-*` process, and none were running at 22:44 | input_check file; processes checked by Claude |
+| 6 | Exit | user: exited with the Velora menu (Exit Velora), so there is no `--exit` exit code to record. The 22:38:36 check shows no `velora-*` process, and none were running at 22:44 | user report; input_check file; processes checked by Claude |
 | 7 | `input_check -Phase after -Watch` | PASS (user): PrintScreen 22:38:43, Win+Shift+S 22:38:50 | input_check file |
 
 `PrintScreenKeyForSnippingEnabled` was unset and unchanged in every run; no modifier key was logically down in any run except as noted below.
