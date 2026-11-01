@@ -76,6 +76,10 @@ int Restore(const char* reason, bool terminateShell) {
     return r.markerRemoved && r.taskbarsVisible ? 0 : 1;
 }
 
+// Test hooks exist only in binaries built with VELORA_TESTING (the *-testing CMake
+// targets used by the gate). Release binaries do not contain them at all:
+// tests/release_hooks_test.cpp checks the strings are absent.
+#ifdef VELORA_TESTING
 // Test profile only: shorten the login-check waits (VELORA_TEST_LOGIN_<name>_MS).
 DWORD LoginMs(const wchar_t* testVar, DWORD production) {
     if (!CurrentProfile().IsTest()) return production;
@@ -83,13 +87,17 @@ DWORD LoginMs(const wchar_t* testVar, DWORD production) {
     if (!GetEnvironmentVariableW(testVar, buf, 16)) return production;
     return static_cast<DWORD>(_wtoi(buf));
 }
+#define VELORA_LOGIN_MS(testVar, production) LoginMs(testVar, production)
+#else
+#define VELORA_LOGIN_MS(testVar, production) (static_cast<DWORD>(production))
+#endif
 
 int LoginCheck() {
     if (!DirtyMarkerExists(DirtyMarkerPath())) return 0;
     log::Warn("login check: dirty marker found");
-    const DWORD initialWaitMs = LoginMs(L"VELORA_TEST_LOGIN_WAIT_MS", 10000);
-    const DWORD retryMs = LoginMs(L"VELORA_TEST_LOGIN_RETRY_MS", 5000);
-    const DWORD giveUpMs = LoginMs(L"VELORA_TEST_LOGIN_MAX_MS", 120000);
+    const DWORD initialWaitMs = VELORA_LOGIN_MS(L"VELORA_TEST_LOGIN_WAIT_MS", 10000);
+    const DWORD retryMs = VELORA_LOGIN_MS(L"VELORA_TEST_LOGIN_RETRY_MS", 5000);
+    const DWORD giveUpMs = VELORA_LOGIN_MS(L"VELORA_TEST_LOGIN_MAX_MS", 120000);
 
     HWND window = MakeWindow();  // receives TaskbarCreated while we wait
     g_taskbarCreated = RegisterWindowMessageW(CurrentProfile().taskbarCreatedMessage.c_str());
@@ -137,14 +145,18 @@ int LoginCheck() {
     return r.markerRemoved && r.taskbarsVisible ? 0 : 1;
 }
 
-// Test hook (test profile only, like the shell's debug_hang): a hello is rejected
-// while this file exists, to exercise the shell's "watchdog restart failed" path.
+// Test hook (VELORA_TESTING builds, test profile only): a hello is rejected while this
+// file exists, to exercise the shell's "watchdog restart failed" path.
+#ifdef VELORA_TESTING
 bool TestRejectsHello() {
     if (!CurrentProfile().IsTest()) return false;
     wchar_t path[MAX_PATH] = {};
     if (!GetEnvironmentVariableW(L"VELORA_TEST_WATCHDOG_REJECT_HELLO_FILE", path, MAX_PATH)) return false;
     return GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES;
 }
+#else
+constexpr bool TestRejectsHello() { return false; }
+#endif
 
 std::int64_t PayloadPid(const json::Value& m) {
     const auto* p = m.Find("payload");

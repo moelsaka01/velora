@@ -81,13 +81,35 @@ velora_add_app(velora-settings apps/settings/main.cpp)
 target_link_libraries(velora-shell    PRIVATE velora_switch)
 target_link_libraries(velora-watchdog PRIVATE velora_switch)
 
+# Test-only builds of the shell and watchdog (VELORA_TESTING compiles the test hooks in:
+# hello-rejecting flag file, login-check timing overrides, debug_hang). They are placed in
+# build/testbin/<config>/ under the release file names, because the shell starts the
+# watchdog by name from its own directory. Release binaries never contain the hooks.
+velora_add_app(velora-shell-testing    src/main.cpp)
+velora_add_app(velora-watchdog-testing watchdog/main.cpp)
+foreach(t velora-shell-testing velora-watchdog-testing)
+  target_link_libraries(${t} PRIVATE velora_switch)
+  target_compile_definitions(${t} PRIVATE VELORA_TESTING)
+endforeach()
+set_target_properties(velora-shell-testing PROPERTIES OUTPUT_NAME velora-shell RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
+set_target_properties(velora-watchdog-testing PROPERTIES OUTPUT_NAME velora-watchdog RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
+
 # Day-2 safety gate (hermetic: fake taskbar windows, private data dir). See tests/switch_gate_test.cpp.
+# Runs against the *-testing binaries.
 add_executable(switch_gate_test tests/switch_gate_test.cpp)
 target_link_libraries(switch_gate_test PRIVATE velora_switch)
-add_dependencies(switch_gate_test velora-shell velora-watchdog)
+add_dependencies(switch_gate_test velora-shell-testing velora-watchdog-testing)
 add_test(NAME switch_gate
-  COMMAND switch_gate_test $<TARGET_FILE:velora-shell> $<TARGET_FILE:velora-watchdog> --out ${CMAKE_BINARY_DIR}/switch_gate_results.json)
+  COMMAND switch_gate_test $<TARGET_FILE:velora-shell-testing> $<TARGET_FILE:velora-watchdog-testing> --out ${CMAKE_BINARY_DIR}/switch_gate_results.json)
 set_tests_properties(switch_gate PROPERTIES TIMEOUT 900)
+
+# Release binaries must not contain the test hooks; the testing binaries must (so the check can fail).
+add_executable(release_hooks_test tests/release_hooks_test.cpp)
+add_dependencies(release_hooks_test velora-shell velora-watchdog velora-shell-testing velora-watchdog-testing)
+add_test(NAME release_hooks
+  COMMAND release_hooks_test
+    $<TARGET_FILE:velora-watchdog> $<TARGET_FILE:velora-shell>
+    $<TARGET_FILE:velora-watchdog-testing> $<TARGET_FILE:velora-shell-testing>)
 
 
 # windows/: top-level window tracking (SetWinEventHook, out-of-context).
