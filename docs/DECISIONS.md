@@ -45,3 +45,5 @@ One line per decision: date, decision, reason.
 2026-11-01 | Tray-icon hosting is not built: Explorer owns the Windows 11 tray and Velora never replaces or injects into Explorer | see PROGRESS Day 3; needs an owner decision
 2026-11-01 | Power actions: confirm dialog (default No), SetSuspendState for sleep, ExitWindowsEx without EWX_FORCE for restart / shut down | documented APIs only; apps keep their chance to save
 2026-11-01 | TaskbarCreated: leading-edge handling plus one trailing run per 500 ms burst (`BurstDebounce`) | Explorer can broadcast it several times; the existing 250/1000 ms re-hide passes still run after each handled event
+2026-11-01 | App index = AppsFolder (IShellItem enumeration) + Start-menu .lnk, cached as JSON, refreshed by a detached worker thread; the index object is leaked so a scan in flight at exit never touches freed memory and never delays exit | exit latency budget is 1 s; a scan can take longer
+2026-11-01 | Apps grid and its D3D/D2D objects exist only while open; icon pixels are cached in `ui::IconStore` (CPU), D2D bitmaps per window | keeps resident memory off the idle budget

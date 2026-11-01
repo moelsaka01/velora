@@ -78,7 +78,7 @@ velora_add_app(velora-shell    src/main.cpp)
 velora_add_app(velora-watchdog watchdog/main.cpp)
 velora_add_app(velora-files    apps/files/main.cpp)
 velora_add_app(velora-settings apps/settings/main.cpp)
-target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui)
+target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps)
 target_link_libraries(velora-watchdog PRIVATE velora_switch)
 
 # Test-only builds of the shell and watchdog (VELORA_TESTING compiles the test hooks in:
@@ -91,7 +91,7 @@ foreach(t velora-shell-testing velora-watchdog-testing)
   target_link_libraries(${t} PRIVATE velora_switch)
   target_compile_definitions(${t} PRIVATE VELORA_TESTING)
 endforeach()
-target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui)
+target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui velora_apps)
 set_target_properties(velora-shell-testing PROPERTIES OUTPUT_NAME velora-shell RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 set_target_properties(velora-watchdog-testing PROPERTIES OUTPUT_NAME velora-watchdog RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 
@@ -145,3 +145,10 @@ add_test(NAME menubar_test COMMAND menubar_test)
 add_executable(debounce_test tests/debounce_test.cpp)
 target_link_libraries(debounce_test PRIVATE velora_contracts)
 add_test(NAME debounce_test COMMAND debounce_test)
+
+# apps/: installed-app index (AppsFolder + Start-menu shortcuts, cached) and the full-screen grid. Owner B.
+add_library(velora_apps STATIC src/apps/app_index.cpp src/apps/apps_grid.cpp)
+target_link_libraries(velora_apps PUBLIC velora_ui velora_core shell32 ole32 propsys)
+add_executable(apps_test tests/apps_test.cpp)
+target_link_libraries(apps_test PRIVATE velora_apps)
+add_test(NAME apps_test COMMAND apps_test)
