@@ -7,3 +7,4 @@ One line per decision: date, decision, reason.
 2026-11-01 | komorebi treated as study-only (custom non-OSI license) | license verified
 2026-11-01 | libs-base/gui usage blocked until per-file license headers checked | GitHub SPDX conflicts with COPYING.LIB
 2026-11-01 | Day-1 research closed; top 5: cairoshell/ManagedShell, LIEF, VirtualDesktopAccessor, PowerToys, Fluent icons | see RESEARCH.md
+2026-11-01 | Design tokens are constexpr, windows.h-free, DIP units; original palette | shared by shell and on-demand apps, no OS assets
