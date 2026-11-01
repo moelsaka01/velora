@@ -58,9 +58,11 @@ std::string ReadAll(const std::filesystem::path& p) {
 
 bool IsOurs(const std::wstring& path) {
     if (path.empty()) return false;
-    auto dir = WallpaperDir().wstring();
-    if (dir.empty()) return false;
-    return _wcsnicmp(path.c_str(), dir.c_str(), dir.size()) == 0;
+    for (const auto& d : WallpaperDirs()) {
+        std::wstring dir = d.wstring();
+        if (!dir.empty() && _wcsnicmp(path.c_str(), dir.c_str(), dir.size()) == 0) return true;
+    }
+    return false;
 }
 
 // COM for the calling thread; the watchdog's recovery path may not have initialised it.
@@ -199,13 +201,28 @@ double AverageLuma(const Image& img) {
     return sum / (static_cast<double>(img.bgr.size()) / 3.0);
 }
 
-std::filesystem::path WallpaperDir() {
-    // Developer override: Explorer must be able to read the image, which it cannot when the data dir is
-    // AppData-virtualised (a shell started from a packaged host such as the Claude desktop app).
-    wchar_t over[MAX_PATH] = {};
-    if (GetEnvironmentVariableW(L"VELORA_WALLPAPER_DIR", over, MAX_PATH) && over[0]) return over;
+// Candidate image directories, best first. The first is the data dir (%LOCALAPPDATA%\Velora\wallpapers); the
+// second is the profile root, used when Explorer cannot read the first: %LOCALAPPDATA% is redirected into the
+// package's private store when the shell is started from a packaged host (e.g. the Claude desktop app), where
+// Explorer cannot see the file (SetWallpaper -> 0x80070002).
+std::vector<std::filesystem::path> WallpaperDirs() {
+    // Test profile only: the tests point the cache at a temp directory.
+    if (CurrentProfile().IsTest()) {
+        wchar_t over[MAX_PATH] = {};
+        if (GetEnvironmentVariableW(L"VELORA_WALLPAPER_DIR", over, MAX_PATH) && over[0]) return {std::filesystem::path(over)};
+    }
+    std::vector<std::filesystem::path> dirs;
     auto dir = DataDir();
-    return dir.empty() ? std::filesystem::path{} : dir / L"wallpapers";
+    if (!dir.empty()) dirs.push_back(dir / L"wallpapers");
+    wchar_t profile[MAX_PATH] = {};
+    if (GetEnvironmentVariableW(L"USERPROFILE", profile, MAX_PATH) && profile[0])
+        dirs.push_back(std::filesystem::path(profile) / L".velora" / L"wallpapers");
+    return dirs;
+}
+
+std::filesystem::path WallpaperDir() {
+    auto d = WallpaperDirs();
+    return d.empty() ? std::filesystem::path{} : d.front();
 }
 
 bool Enabled() {
@@ -267,13 +284,26 @@ int ApplyVelora(bool dark) {
         }
         std::wstring name = L"velora-" + std::to_wstring(w) + L"x" + std::to_wstring(h) + (dark ? L"-dark" : L"-light") + L"-v" +
                             std::to_wstring(index % 4) + L"-1.bmp";
-        auto file = WallpaperDir() / name;
-        if (!std::filesystem::exists(file) && !WriteBmp(file, Generate(w, h, dark, index))) {
-            log::Warn("wallpaper: cannot write " + WideToUtf8(file.wstring()));
-            continue;
+        HRESULT hr = E_FAIL;
+        bool written = false;
+        bool first = true;
+        for (const auto& d : WallpaperDirs()) {
+            auto file = d / name;
+            if (!std::filesystem::exists(file) && !WriteBmp(file, Generate(w, h, dark, index))) {
+                log::Warn("wallpaper: cannot write " + WideToUtf8(file.wstring()));
+                continue;
+            }
+            written = true;
+            dw->SetPosition(DWPOS_FILL);
+            hr = dw->SetWallpaper(m.id.c_str(), file.c_str());
+            if (SUCCEEDED(hr)) {
+                log::Info("wallpaper: using " + WideToUtf8(file.wstring()) + (first ? "" : " (fallback)"));
+                break;
+            }
+            log::Warn("wallpaper: Explorer rejected " + WideToUtf8(file.wstring()) + "; trying the next directory");
+            first = false;
         }
-        dw->SetPosition(DWPOS_FILL);
-        HRESULT hr = dw->SetWallpaper(m.id.c_str(), file.c_str());
+        if (!written) continue;
         if (SUCCEEDED(hr)) ++changed;
         else log::Warn("wallpaper: SetWallpaper failed, hr=0x" + [&] { char b[16]; sprintf_s(b, "%08lX", static_cast<unsigned long>(hr)); return std::string(b); }());
         ++index;
