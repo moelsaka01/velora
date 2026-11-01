@@ -96,3 +96,14 @@ target_link_libraries(velora_windows PUBLIC velora_core dwmapi shell32 user32)
 add_executable(window_tracker_test tests/window_tracker_test.cpp)
 target_link_libraries(window_tracker_test PRIVATE velora_windows)
 add_test(NAME window_tracker_test COMMAND window_tracker_test)
+
+# render/: animation engine (header-only) and the D2D/DirectComposition host.
+add_executable(animation_test tests/animation_test.cpp)
+target_link_libraries(animation_test PRIVATE velora_tokens)
+add_test(NAME animation_test COMMAND animation_test)
+
+add_library(velora_render STATIC src/render/render_host.cpp)
+target_link_libraries(velora_render PUBLIC velora_core velora_tokens d3d11 dxgi d2d1 dcomp dwmapi user32)
+add_executable(render_host_test tests/render_host_test.cpp)
+target_link_libraries(render_host_test PRIVATE velora_render)
+add_test(NAME render_host_test COMMAND render_host_test)

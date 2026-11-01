@@ -25,3 +25,4 @@ One line per decision: date, decision, reason.
 2026-11-01 | Test-only IPC type `debug_hang` exists only when VELORA_TEST_PROFILE is set; not part of ipc/v1.json | needed to simulate a hung UI thread
 2026-11-01 | Gate harness: window-list equality is strict for lost/changed windows and for all windows of the test process; windows other processes create mid-run are counted and tolerated; hidden foreign windows and Explorer's EdgeUI/IME helper windows are ignored | a live desktop churns on its own; Velora cannot create other processes' windows
 2026-11-01 | PerMonitorV2 DPI awareness is set in code at shell start, not via manifest | no manifest infrastructure yet; revisit with the installer
+2026-11-01 | render/ animation engine is pure C++ with caller-owned clock and frame timer; RenderHost uses composition swap chains (flip, premultiplied) with WARP fallback | testable without a GPU; windows need no WS_EX_LAYERED
