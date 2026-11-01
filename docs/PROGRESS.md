@@ -6,7 +6,7 @@ Status: not started | in progress | gated | passed | deferred
 |---|---|---|
 | core | in progress | contracts v1 (ipc.h, state.h, events.h, module.h, ipc/v1.json) compile + contracts_test passes |
 | switch | not started | |
-| render | not started | |
+| render | in progress | tokens.h + tokens_test pass; no renderer yet |
 | dock | not started | |
 | menubar | not started | |
 | windows | not started | |
