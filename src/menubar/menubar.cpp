@@ -428,9 +428,15 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
                 // Win+B needs a visible taskbar on some builds. If the flyout did not appear, open the page where
                 // the user manages "Other system tray icons" instead.
                 HWND fly = FindWindowW(L"TopLevelWindowForOverflowXamlIsland", nullptr);
-                if (!fly || !IsWindowVisible(fly)) {
-                    log::Warn("menubar: overflow flyout did not appear; opening ms-settings:taskbar");
-                    ShellExecuteW(nullptr, L"open", L"ms-settings:taskbar", nullptr, nullptr, SW_SHOWNORMAL);
+                if (fly && IsWindowVisible(fly)) {
+                    log::Info("menubar: overflow result=flyout (Windows' notification overflow is visible)");
+                } else {
+                    auto r = reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", L"ms-settings:taskbar", nullptr, nullptr, SW_SHOWNORMAL));
+                    if (r > 32)
+                        log::Warn("menubar: overflow result=ms-settings-fallback (flyout did not appear; opened ms-settings:taskbar)");
+                    else
+                        log::Error("menubar: overflow result=failed (flyout did not appear and ms-settings:taskbar did not open, code " +
+                                   std::to_string(r) + ")");
                 }
                 result = 0;
                 return true;
