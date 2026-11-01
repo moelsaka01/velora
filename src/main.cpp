@@ -24,6 +24,7 @@
 #include "switch/restore.h"
 #include "switch/switch_manager.h"
 #include "ui/ui_common.h"
+#include "wallpaper/wallpaper.h"
 #include "windows/window_tracker.h"
 
 namespace {
@@ -256,6 +257,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     bus.Subscribe(EventType::Entered, [&](const Event&) {
         menuBar.Attach(manager.MenuBarBar().Hwnd());
         dock.Attach(&manager.DockBar());
+        // Original Velora wallpaper per monitor (reversible: the original is backed up first and restored on
+        // exit and by crash recovery). Never in the test profile: tests must not touch the real desktop.
+        if (!CurrentProfile().IsTest() && wallpaper::Enabled()) wallpaper::ApplyVelora(ui::SystemTheme() == tokens::Theme::Dark);
     });
     bus.Subscribe(EventType::Exiting, [&](const Event&) {
         dock.Detach();

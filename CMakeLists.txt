@@ -65,7 +65,15 @@ add_test(NAME core_test COMMAND core_test)
 # switch/: enter/exit, appbar, taskbar helpers, restore (shared by shell and watchdog).
 add_library(velora_switch STATIC
   src/switch/taskbar.cpp src/switch/restore.cpp src/switch/appbar.cpp src/switch/switch_manager.cpp)
-target_link_libraries(velora_switch PUBLIC velora_core velora_tokens shcore)
+target_link_libraries(velora_switch PUBLIC velora_core velora_tokens shcore velora_wallpaper)
+
+# wallpaper/: procedural Velora wallpaper per monitor, restore on exit / recovery. Owner B. Defined before
+# velora_switch because recovery (switch/restore.cpp) restores the original wallpaper.
+add_library(velora_wallpaper STATIC src/wallpaper/wallpaper.cpp)
+target_link_libraries(velora_wallpaper PUBLIC velora_core ole32 shell32)
+add_executable(wallpaper_test tests/wallpaper_test.cpp)
+target_link_libraries(wallpaper_test PRIVATE velora_wallpaper)
+add_test(NAME wallpaper_test COMMAND wallpaper_test)
 
 # Binaries. Resident: shell, watchdog. On-demand: files, settings.
 function(velora_add_app target source)
@@ -78,7 +86,7 @@ velora_add_app(velora-shell    src/main.cpp)
 velora_add_app(velora-watchdog watchdog/main.cpp)
 velora_add_app(velora-files    apps/files/main.cpp)
 velora_add_app(velora-settings apps/settings/main.cpp)
-target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps velora_dock)
+target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper)
 target_link_libraries(velora-watchdog PRIVATE velora_switch)
 
 # Test-only builds of the shell and watchdog (VELORA_TESTING compiles the test hooks in:
@@ -91,7 +99,7 @@ foreach(t velora-shell-testing velora-watchdog-testing)
   target_link_libraries(${t} PRIVATE velora_switch)
   target_compile_definitions(${t} PRIVATE VELORA_TESTING)
 endforeach()
-target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui velora_apps velora_dock)
+target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper)
 set_target_properties(velora-shell-testing PROPERTIES OUTPUT_NAME velora-shell RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 set_target_properties(velora-watchdog-testing PROPERTIES OUTPUT_NAME velora-watchdog RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 
