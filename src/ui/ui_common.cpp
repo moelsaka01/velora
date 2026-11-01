@@ -14,6 +14,7 @@
 #include <thread>
 
 #include "core/log.h"
+#include "core/text.h"
 
 #pragma comment(lib, "dwrite.lib")
 #pragma comment(lib, "version.lib")
@@ -146,41 +147,166 @@ namespace {
 
 constexpr int kIconPx = 96;
 
-std::shared_ptr<Pixels> LoadIcon(const std::wstring& source) {
-    ComPtr<IShellItem> item;
-    if (FAILED(SHCreateItemFromParsingName(source.c_str(), nullptr, IID_PPV_ARGS(&item)))) return nullptr;
-    ComPtr<IShellItemImageFactory> factory;
-    if (FAILED(item.As(&factory))) return nullptr;
-    HBITMAP bmp = nullptr;
-    if (FAILED(factory->GetImage({kIconPx, kIconPx}, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &bmp)) || !bmp) return nullptr;
+// A usable icon covers at least a few percent of its canvas; an all-transparent bitmap counts as a miss
+// so the next step of the chain gets a chance (some shell handlers "succeed" with an empty image).
+bool HasContent(const Pixels& p) {
+    size_t opaque = 0, total = static_cast<size_t>(p.width) * p.height;
+    for (size_t i = 3; i < p.bgra.size(); i += 4)
+        if (p.bgra[i] > 16) ++opaque;
+    return total > 0 && opaque * 50 >= total;
+}
+
+bool HbitmapToPixels(HBITMAP bmp, Pixels* out) {
     BITMAP info{};
-    GetObjectW(bmp, sizeof info, &info);
-    auto px = std::make_shared<Pixels>();
-    px->width = info.bmWidth;
-    px->height = info.bmHeight;
-    px->bgra.resize(static_cast<size_t>(px->width) * px->height * 4);
+    if (!GetObjectW(bmp, sizeof info, &info) || info.bmWidth <= 0 || info.bmHeight <= 0) return false;
+    out->width = info.bmWidth;
+    out->height = info.bmHeight;
+    out->bgra.assign(static_cast<size_t>(out->width) * out->height * 4, 0);
     BITMAPINFO bi{};
     bi.bmiHeader.biSize = sizeof bi.bmiHeader;
-    bi.bmiHeader.biWidth = px->width;
-    bi.bmiHeader.biHeight = -px->height;
+    bi.bmiHeader.biWidth = out->width;
+    bi.bmiHeader.biHeight = -out->height;
     bi.bmiHeader.biPlanes = 1;
     bi.bmiHeader.biBitCount = 32;
     bi.bmiHeader.biCompression = BI_RGB;
     HDC dc = GetDC(nullptr);
-    int got = GetDIBits(dc, bmp, 0, px->height, px->bgra.data(), &bi, DIB_RGB_COLORS);
+    int got = GetDIBits(dc, bmp, 0, out->height, out->bgra.data(), &bi, DIB_RGB_COLORS);
     ReleaseDC(nullptr, dc);
-    DeleteObject(bmp);
-    if (!got) return nullptr;
-    return px;
+    return got != 0;
 }
 
+// Renders an HICON on black and on white; the difference gives the alpha, the black render the
+// premultiplied colour. Works for 32-bit alpha icons and for old mask-only icons alike.
+bool HiconToPixels(HICON icon, int px, Pixels* out) {
+    BITMAPINFO bi{};
+    bi.bmiHeader.biSize = sizeof bi.bmiHeader;
+    bi.bmiHeader.biWidth = px;
+    bi.bmiHeader.biHeight = -px;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    HDC dc = CreateCompatibleDC(nullptr);
+    if (!dc) return false;
+    std::vector<std::uint8_t> render[2];
+    bool ok = true;
+    for (int pass = 0; pass < 2 && ok; ++pass) {
+        void* bits = nullptr;
+        HBITMAP dib = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        if (!dib || !bits) {
+            ok = false;
+            break;
+        }
+        size_t bytes = static_cast<size_t>(px) * px * 4;
+        memset(bits, pass == 0 ? 0x00 : 0xFF, bytes);
+        HGDIOBJ old = SelectObject(dc, dib);
+        ok = DrawIconEx(dc, 0, 0, icon, px, px, 0, nullptr, DI_NORMAL) != FALSE;
+        GdiFlush();
+        render[pass].assign(static_cast<std::uint8_t*>(bits), static_cast<std::uint8_t*>(bits) + bytes);
+        SelectObject(dc, old);
+        DeleteObject(dib);
+    }
+    DeleteDC(dc);
+    if (!ok) return false;
+    out->width = out->height = px;
+    out->bgra.resize(render[0].size());
+    for (size_t i = 0; i < render[0].size(); i += 4) {
+        int diff = (render[1][i] - render[0][i] + render[1][i + 1] - render[0][i + 1] + render[1][i + 2] - render[0][i + 2]) / 3;
+        int a = std::clamp(255 - diff, 0, 255);
+        for (int c = 0; c < 3; ++c) out->bgra[i + c] = static_cast<std::uint8_t>(std::min<int>(render[0][i + c], a));
+        out->bgra[i + 3] = static_cast<std::uint8_t>(a);
+    }
+    return true;
+}
+
+// Step: shell image factory in icon mode (what Explorer shows), at the needed size.
+bool FromShellFactory(const std::wstring& parsingName, Pixels* out) {
+    ComPtr<IShellItem> item;
+    if (FAILED(SHCreateItemFromParsingName(parsingName.c_str(), nullptr, IID_PPV_ARGS(&item)))) return false;
+    ComPtr<IShellItemImageFactory> factory;
+    if (FAILED(item.As(&factory))) return false;
+    HBITMAP bmp = nullptr;
+    if (FAILED(factory->GetImage({kIconPx, kIconPx}, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &bmp)) || !bmp) return false;
+    Pixels px;
+    bool ok = HbitmapToPixels(bmp, &px) && HasContent(px);
+    DeleteObject(bmp);
+    if (ok) *out = std::move(px);
+    return ok;
+}
+
+// Step: IExtractIcon (through SHDefExtractIcon) on a file + icon index, at the needed size.
+bool FromExtractIcon(const std::wstring& file, int index, Pixels* out) {
+    if (file.empty()) return false;
+    std::wstring path(MAX_PATH * 2, L'\0');
+    DWORD n = ExpandEnvironmentStringsW(file.c_str(), path.data(), static_cast<DWORD>(path.size()));
+    if (n == 0 || n > path.size()) return false;
+    path.resize(n - 1);
+    HICON large = nullptr;
+    if (FAILED(SHDefExtractIconW(path.c_str(), index, 0, &large, nullptr, MAKELONG(kIconPx, 0))) || !large) return false;
+    Pixels px;
+    bool ok = HiconToPixels(large, kIconPx, &px) && HasContent(px);
+    DestroyIcon(large);
+    if (ok) *out = std::move(px);
+    return ok;
+}
+
+bool IsLink(const std::wstring& s) { return s.size() > 4 && Lower(s.substr(s.size() - 4)) == L".lnk"; }
+
 }  // namespace
+
+// Chain (first success wins; `how` names the step):
+//   1. IShellItemImageFactory (icon only) on the source itself (.lnk, exe or AppsFolder item)
+//   2. IExtractIcon from the shortcut's own icon location
+//   3. the same two steps on the shortcut's / AppsFolder item's target executable
+// Failure means the caller draws the letter tile, which is the last resort.
+bool LoadIconPixels(const std::wstring& source, Pixels* out, std::string* how, bool skipShellFactory) {
+    auto done = [&](const char* step) {
+        if (how) *how = step;
+        return true;
+    };
+    if (source.empty()) return false;
+    if (!skipShellFactory && FromShellFactory(source, out)) return done("shell-item-image");
+
+    std::wstring target;
+    if (IsLink(source)) {
+        ComPtr<IShellLinkW> link;
+        ComPtr<IPersistFile> file;
+        if (SUCCEEDED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&link))) &&
+            SUCCEEDED(link.As(&file)) && SUCCEEDED(file->Load(source.c_str(), STGM_READ))) {
+            wchar_t loc[MAX_PATH * 2] = {};
+            int idx = 0;
+            if (SUCCEEDED(link->GetIconLocation(loc, static_cast<int>(std::size(loc)), &idx)) && loc[0] &&
+                FromExtractIcon(loc, idx, out))
+                return done("link-icon-location");
+            wchar_t t[MAX_PATH * 2] = {};
+            if (SUCCEEDED(link->GetPath(t, static_cast<int>(std::size(t)), nullptr, SLGP_UNCPRIORITY))) target = t;
+        }
+    } else if (source.rfind(L"shell:AppsFolder\\", 0) == 0) {
+        ComPtr<IShellItem2> item;
+        if (SUCCEEDED(SHCreateItemFromParsingName(source.c_str(), nullptr, IID_PPV_ARGS(&item)))) {
+            // PKEY_Link_TargetParsingPath
+            static const PROPERTYKEY kTarget = {{0xB9B4B3FC, 0x2B51, 0x4A42, {0xB5, 0xD8, 0x32, 0x41, 0x46, 0xAF, 0xCF, 0x25}}, 2};
+            PWSTR p = nullptr;
+            if (SUCCEEDED(item->GetString(kTarget, &p)) && p) target = p;
+            CoTaskMemFree(p);
+        }
+    } else {
+        // A plain exe path: its first icon resource.
+        if (FromExtractIcon(source, 0, out)) return done("exe-icon");
+        return false;
+    }
+    if (!target.empty()) {
+        if (!skipShellFactory && FromShellFactory(target, out)) return done("target-shell-item-image");
+        if (FromExtractIcon(target, 0, out)) return done("target-exe-icon");
+    }
+    return false;
+}
 
 struct IconStore::Impl {
     std::mutex mutex;
     std::condition_variable cv;
     std::map<std::wstring, std::shared_ptr<const Pixels>> done;
     std::set<std::wstring> requested;
+    std::map<std::wstring, std::pair<int, ULONGLONG>> failures;  // attempts, tick of the last one
     std::deque<std::wstring> queue;
     std::thread worker;
     bool stop = false;
@@ -199,7 +325,17 @@ struct IconStore::Impl {
                 src = std::move(queue.front());
                 queue.pop_front();
             }
-            std::shared_ptr<Pixels> px = LoadIcon(src);
+            auto px = std::make_shared<Pixels>();
+            std::string how;
+            if (LoadIconPixels(src, px.get(), &how)) {
+                log::Info("icons: " + WideToUtf8(src) + " via " + how);
+            } else {
+                log::Warn("icons: no icon found for " + WideToUtf8(src) + "; drawing the letter tile");
+                px = nullptr;
+                std::lock_guard lock(mutex);
+                auto& f = failures[src];
+                f = {f.first + 1, GetTickCount64()};
+            }
             HWND n = nullptr;
             {
                 std::lock_guard lock(mutex);
@@ -234,7 +370,15 @@ std::shared_ptr<const Pixels> IconStore::Find(const std::wstring& source) {
 void IconStore::Request(const std::wstring& source) {
     if (source.empty()) return;
     std::lock_guard lock(impl_->mutex);
-    if (impl_->stop || !impl_->requested.insert(source).second) return;
+    if (impl_->stop) return;
+    if (!impl_->requested.insert(source).second) {
+        // A failed load is retried (the shell may not have been ready), at most 3 times, 5 s apart.
+        auto f = impl_->failures.find(source);
+        if (f == impl_->failures.end() || f->second.first >= 3 || GetTickCount64() - f->second.second < 5000 ||
+            impl_->done.count(source))
+            return;
+        if (std::find(impl_->queue.begin(), impl_->queue.end(), source) != impl_->queue.end()) return;
+    }
     impl_->queue.push_back(source);
     if (!impl_->worker.joinable()) impl_->worker = std::thread([this] { impl_->Run(); });
     impl_->cv.notify_one();
