@@ -5,7 +5,7 @@ Status: not started | in progress | gated | passed | deferred
 | Module | Status | Evidence |
 |---|---|---|
 | core | passed (G1) | contracts v1 + json, state store, IPC pipe, runtime/profile, log, event bus; core_test passes (PR #9 merged, CI green) |
-| switch | gated | Day-2 safety gate PASS locally (55/55 checks, see Day 2 below); CI result recorded on the PR |
+| switch | gated | Day-2 safety gate PASS locally (111/111 checks after the review fixes, see "Day 2 review fixes"; original run 55/55); CI result recorded on the PRs |
 | render | passed (base) | tokens + animation engine (animation_test) + RenderHost (render_host_test: D3D11 + composition swap chain + D2D draw/present/resize, DWM Mica/rounded-corner helpers). No consumers yet (dock/menubar are Day 3) |
 | dock | not started | |
 | menubar | not started | |
@@ -86,3 +86,11 @@ Raw results: `docs/evidence/switch_gate_2026-11-01.json`. Run on Windows 11 10.0
 - `render_host_test` prints `render_host_test: device` or `render_host_test: skipped (...)`; CI has an extra `-V` step so the line is visible. Local: `device` (hardware adapter). CI path: see the PR check log.
 - Gate flake found and fixed (test only): the exit->enter loop started the next shell while the previous kill-recovery watchdog still owned the pipe, so the new hello failed. The loop now waits for that watchdog. Before the fix 2 of 6 full runs failed on that check; after it 4 of 4 full runs passed (111 checks each).
 - One full run also failed 47 `cycles` checks with `lost ... Chrome_WidgetWin_1` (another application's windows disappearing between the snapshots); not reproduced in 8 later full/cycle runs. Treated as desktop churn from other applications, not investigated further: unexplained.
+
+### Re-run of the full switch gate after PR A+B+C (tip of fix/low-severity)
+Raw results: `docs/evidence/switch_gate_2026-11-01_review-fixes.json`. Windows 11 10.0.26200, real Explorer, 1 monitor, non-elevated. **111/111 checks pass.**
+- Enter/exit: 50/50 cycles clean (window list identical, state.json consumed, work area identical). Enter median 349 ms (max 566), exit median 342 ms (max 588).
+- Forced kills 10/10: taskbars back median 74 ms (max 100); work area back median 201 ms (max 232); watchdog exits, marker and state.json gone.
+- Hangs 3/3: taskbars back median 2248 ms (max 2265, budget 3 s); work area back median 2335 ms (max 2354).
+- Hotkey with frozen shell: 17 ms. Explorer restarts (simulated) 3/3, re-hidden median 31 ms.
+- Still unmeasured (unchanged): real Explorer restart, real taskbar hide/auto-hide fallback and multi-monitor secondary taskbar, physical key press, elevated windows.
