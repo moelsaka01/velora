@@ -6,6 +6,7 @@
 // when a Start-menu folder changes or every 30 minutes. Opening the grid never scans.
 #pragma once
 
+#include <functional>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -28,6 +29,12 @@ struct AppEntry {
 int MatchScore(const std::wstring& query, const std::wstring& name);
 // Shortcuts that are not apps (uninstallers, readmes, help).
 bool IsNoiseShortcut(const std::wstring& name);
+// The program a shortcut really starts: the App-V launcher of Click-to-Run Office (AppVLP.exe) is only a trampoline
+// whose first quoted argument is the tool; everything else is returned as is.
+std::wstring RealProgram(const std::wstring& exe, const std::wstring& args);
+// A classic (non-MSIX) entry whose executable is gone: a shortcut left behind by an uninstalled app. It cannot be
+// launched and has no icon to show, so the index drops it. Packaged apps (no exe path), unknown and unexpanded targets are never stale.
+bool IsStaleEntry(const AppEntry& entry, const std::function<bool(const std::wstring&)>& exists);
 // Merge sources in priority order: the first entry per case-insensitive name wins, missing exePath is filled
 // from later duplicates; the result is sorted by name.
 std::vector<AppEntry> MergeEntries(std::vector<std::vector<AppEntry>> sources);
