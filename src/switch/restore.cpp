@@ -9,6 +9,7 @@
 #include "core/state_store.h"
 #include "switch/appbar.h"
 #include "switch/taskbar.h"
+#include "wallpaper/wallpaper.h"
 
 namespace velora::sw {
 
@@ -112,6 +113,9 @@ RestoreResult RestoreWindowsDesktop(const RestoreOptions& opt) {
         HWND fg = reinterpret_cast<HWND>(static_cast<UINT_PTR>(state->foregroundHwnd));
         if (IsWindow(fg) && IsWindowVisible(fg) && !IsIconic(fg)) SetForegroundWindow(fg);
     }
+
+    // 5b. Wallpaper: put the user's own back (no-op unless Velora changed it and a backup exists).
+    if (!CurrentProfile().IsTest()) wallpaper::RestoreOriginal();
 
     // 6. Last: the marker. Until it is gone, recovery stays armed.
     r.markerRemoved = RemoveDirtyMarker(markerPath);
