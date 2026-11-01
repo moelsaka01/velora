@@ -259,14 +259,17 @@ std::string DiffWindows(const WinMap& a, const WinMap& b) {
             // Attribution: Velora causes the loss of its own test windows, and calls a window API
             // (SetForegroundWindow) on the one that had focus. It never terminates a foreign process,
             // so any other foreign window that vanished did so on its own: logged, not failed.
-            if (w.pid == GetCurrentProcessId() || h == g_fgBefore) { d << "lost " << h << " (" << WideToUtf8(w.cls) << ") "; continue; }
+            // The focused window is a failure unless its own process was seen destroying it (a transient
+            // Chrome popup that had focus closing itself): Velora cannot destroy another process's window.
             std::lock_guard<std::mutex> lock(g_destroyedMutex);
+            bool destroyedByOwner = g_destroyed.count(h) != 0;
+            if (w.pid == GetCurrentProcessId() || (h == g_fgBefore && !destroyedByOwner)) { d << "lost " << h << " (" << WideToUtf8(w.cls) << ") "; continue; }
             g_externalLost[h] = WideToUtf8(w.cls) + " pid " + std::to_string(w.pid) + (g_destroyed.count(h) ? ", destroyed by its owner" : ", no destroy event (hidden?)");
             continue;
         }
         const WinInfo& n = it->second;
         if (n.cls != w.cls || n.visible != w.visible || n.iconic != w.iconic || n.zoomed != w.zoomed)
-            d << "changed " << h << " (" << WideToUtf8(w.cls) << ") vis " << w.visible << "->" << n.visible << " ";
+            d << "changed " << h << " (" << WideToUtf8(w.cls) << "->" << WideToUtf8(n.cls) << ") vis " << w.visible << "->" << n.visible << " iconic " << w.iconic << "->" << n.iconic << " zoomed " << w.zoomed << "->" << n.zoomed << " pid " << w.pid << " ";
         if (w.pid == GetCurrentProcessId() && !EqualRect(&w.rect, &n.rect)) d << "moved " << h << " ";
     }
     for (const auto& [h, w] : b) {
