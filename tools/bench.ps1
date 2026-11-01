@@ -90,7 +90,8 @@ for ($run = 1; $run -le $Runs; $run++) {
     Sample-Phase 'velora' $SampleSec $ids $rows
 
     $sw.Restart()
-    & $Shell --exit
+    # -Wait: velora-shell is a GUI-subsystem exe, so a plain call returns at once. The helper returns when the shell is gone.
+    Start-Process -FilePath $Shell -ArgumentList "--exit" -Wait
     $exitMs = $sw.ElapsedMilliseconds
     $csv = Join-Path $OutDir "${stamp}_run$run.csv"
     $rows | Export-Csv -NoTypeInformation -Path $csv

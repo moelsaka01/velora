@@ -1,0 +1,35 @@
+﻿[
+    {
+        "run":  1,
+        "enterMs":  1264,
+        "exitMs":  18,
+        "committedDeltaMB":  -66.5,
+        "shellPlusWatchdogPrivateMB":  103.9,
+        "shellPlusWatchdogWorkingSetMB":  121.7,
+        "idleCpuPercent":  0,
+        "gpuLocalMB":  41.7,
+        "csv":  "C:\\velora\\bench\\20261101-173816_run1.csv"
+    },
+    {
+        "run":  2,
+        "enterMs":  242,
+        "exitMs":  15,
+        "committedDeltaMB":  34.9,
+        "shellPlusWatchdogPrivateMB":  103.9,
+        "shellPlusWatchdogWorkingSetMB":  102.8,
+        "idleCpuPercent":  0,
+        "gpuLocalMB":  41.1,
+        "csv":  "C:\\velora\\bench\\20261101-173816_run2.csv"
+    },
+    {
+        "run":  3,
+        "enterMs":  983,
+        "exitMs":  16,
+        "committedDeltaMB":  -56.1,
+        "shellPlusWatchdogPrivateMB":  103.6,
+        "shellPlusWatchdogWorkingSetMB":  121.5,
+        "idleCpuPercent":  0,
+        "gpuLocalMB":  41.9,
+        "csv":  "C:\\velora\\bench\\20261101-173816_run3.csv"
+    }
+]
