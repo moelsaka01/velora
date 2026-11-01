@@ -65,6 +65,7 @@ std::string HandleRequest(std::string_view raw) {
         PostMessageW(g_window, WM_CLOSE, 0, 0);  // exit runs after this reply is sent
         return Reply(req, 0, self);
     }
+#ifdef VELORA_TESTING
     if (t == "debug_hang" && CurrentProfile().IsTest()) {
         // Test hook (never in production profile): freeze the UI thread so the
         // watchdog's heartbeat timeout can be exercised.
@@ -73,6 +74,7 @@ std::string HandleRequest(std::string_view raw) {
         Sleep(static_cast<DWORD>(ms ? ms->AsInt(60000) : 60000));
         return Reply(req, 0);
     }
+#endif
     return Reply(req, 501, {}, "unsupported request type");
 }
 
