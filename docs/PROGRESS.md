@@ -11,7 +11,7 @@ Status: not started | in progress | gated | passed | deferred
 | menubar | in progress (G1 partial) | Velora menu, active app, battery + clock, light/dark, drawn in the top appbar; menubar_test + live run on this machine. **Tray-icon hosting not built (blocked, see Day 3)** |
 | windows | passed (G1 tracking) | window_tracker_test: lifecycle via WinEvents (create/title/minimize/restore/hide/destroy), tool/owned/never-shown windows excluded, own-process skip, fullscreen rect + elevation helpers, live foreground + fullscreen with VELORA_TEST_FOCUS=1 (run once locally: pass). Cloaked path and a real elevated window are unmeasured |
 | overview | not started | |
-| apps | not started | |
+| apps | in progress (G1 built, see Day 3) | app index (AppsFolder + Start-menu .lnk, cached JSON, background refresh) + full-screen grid with search; apps_test (matching, merge, cache, layout, real read-only scan: 191 apps here); live open/close on this machine |
 | search | not started | |
 | control | not started | |
 | notify | not started | |
@@ -124,3 +124,11 @@ Starting commit: `4d6ac80` (main before Day 3). Compat is a separate session.
 
 ### Switch gate after Day 3 (menubar PR build)
 - Local runs against the testing binaries with menu bar + window tracker active: run 1 FAIL (2 of 117 checks; the failing checks were not captured because only the tail of the output was kept), runs 2, 3 and 4 PASS 117/117 (enter median 431 ms / max 688, exit median 265 ms / max 557). The failure is **not reproduced and not explained**; the gate's own output is now kept in full (`build/gate_r*.log`). Open item: re-run on the final Day 3 main and attribute any failure.
+
+### apps (PR feat/apps)
+- `AppIndex`: AppsFolder enumeration (Win32 shortcuts and MSIX, with AppUserModelIDs and target exe) merged with Start-menu `.lnk` files from both Programs folders (deduplicated by name, uninstallers/readmes dropped). Cached in `%LOCALAPPDATA%\Velora\apps_index.json`, loaded at shell start (instant), refreshed on a detached worker thread at start, when a Start-menu folder changes (3 s debounce) and every 30 min. **Opening the grid never scans**; it takes a snapshot.
+- `AppsGrid`: full-screen window created on open and destroyed on close (GPU objects freed), type-to-search (prefix > word prefix > substring > subsequence), arrows / Enter / Esc / wheel / click, icons loaded asynchronously (IconStore worker, shell `IShellItemImageFactory`), open animation through the shared AnimationEngine. Opened from the Velora menu ("Apps") and the Dock.
+- Live check: 191 apps listed with their real icons; search field, selection highlight and tiles drawn; closing returns to the desktop. Not exercised live: launching an app from the grid (`apps::Launch` is ShellExecute of `shell:AppsFolder\<id>` or the .lnk; the same call the Dock uses) and icon-less MSIX edge cases.
+- Not built (G2): pages, folders, drag-reorder. Single scrolling page for G1.
+- The shell skips the background scan in the test profile (gate measures switching; the test profile has a private data dir).
+- Memory note: opening the grid raised the shell working set from 57 MB to 146 MB, 126 MB after closing (see the bench section); this is being reduced in the dock PR.

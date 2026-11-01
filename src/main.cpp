@@ -17,6 +17,8 @@
 #include "core/log.h"
 #include "core/runtime.h"
 #include "core/state_store.h"
+#include "apps/app_index.h"
+#include "apps/apps_grid.h"
 #include "menubar/menubar.h"
 #include "switch/restore.h"
 #include "switch/switch_manager.h"
@@ -35,6 +37,8 @@ constexpr UINT_PTR kTimerTaskbarTrailing = 4;  // trailing run of a TaskbarCreat
 UINT g_taskbarCreated = 0;
 sw::SwitchManager* g_manager = nullptr;
 HWND g_window = nullptr;
+apps::AppsGrid* g_grid = nullptr;
+constexpr UINT kMsgAppsChanged = WM_APP + 42;  // the app index was refreshed on its worker thread
 BurstDebounce g_taskbarDebounce(500);  // Explorer may broadcast TaskbarCreated several times in a burst
 
 std::string Reply(const json::Value& req, int status, const json::Value& payload = {}, const std::string& error = {}) {
@@ -106,6 +110,10 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             case BurstDebounce::Action::Drop:
                 break;
         }
+        return 0;
+    }
+    if (msg == kMsgAppsChanged) {
+        if (g_grid) g_grid->OnDataChanged();
         return 0;
     }
     if (msg == ui::kMsgIconsLoaded) {
@@ -231,6 +239,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         auto exe = ExeDir() / L"velora-settings.exe";
         ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     };
+    apps::AppsGrid grid(instance);
+    g_grid = &grid;
+    menuActions.openApps = [] { if (g_grid) g_grid->Toggle(); };
+    // Cached index first (instant), then a background refresh. Skipped in the test profile: the gate
+    // measures switching, and a real-machine scan per spawned shell would only add noise.
+    apps::AppIndex::Get().LoadCache();
+    if (!CurrentProfile().IsTest()) apps::AppIndex::Get().StartBackground(g_window, kMsgAppsChanged);
     menubar::MenuBar menuBar(bus, tracker, menuActions);
     manager.SetMenuBarOptions(menuBar.Options());
     bus.Subscribe(EventType::Entered, [&](const Event&) { menuBar.Attach(manager.MenuBarBar().Hwnd()); });
@@ -267,6 +282,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     tracker.Stop();
     manager.Exit();
     g_manager = nullptr;
+    grid.Hide();
+    g_grid = nullptr;
     ui::IconStore::Get().Shutdown();
     DestroyWindow(g_window);
     return 0;
