@@ -41,6 +41,12 @@ struct DockItem {
 // Does a window belong to this app? AUMID match wins; otherwise the exe path (case-insensitive).
 bool Matches(const DockApp& app, const DockWindow& w);
 
+// Pinned apps the Dock shows: the Apps item, shell:/URI targets, and files that exist - minus Velora's own
+// apps that have not reached their G1 gate yet (their executables are empty stubs). The saved pinned list is
+// not changed; a hidden entry reappears once the file exists / the module is ready.
+std::vector<DockApp> VisiblePinned(const std::vector<DockApp>& pinned,
+                                   const std::function<bool(const std::wstring&)>& fileExists);
+
 // Pinned apps first (in order), then one item per running app that is not pinned (in window order).
 // `describe` builds the app info for an unpinned running window.
 std::vector<DockItem> BuildItems(const std::vector<DockApp>& pinned, const std::vector<DockWindow>& windows,

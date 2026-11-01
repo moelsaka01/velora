@@ -75,6 +75,7 @@ private:
     render::RenderHost host_;
     render::AnimationEngine anim_;
     bool frameTimer_ = false, rebuildPending_ = false, backdrop_ = false;
+    size_t hiddenLogged_ = static_cast<size_t>(-1);  // last visible-pinned count that was logged
     float appear_ = 1.0f;  // 0..1 entrance animation
     std::vector<EventBus::Token> tokens_;
 
