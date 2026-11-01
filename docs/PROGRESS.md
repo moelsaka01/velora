@@ -143,3 +143,7 @@ Starting commit: `4d6ac80` (main before Day 3). Compat is a separate session.
 - Not built: magnification, minimize-into-Dock animation, jump lists, recent folders, drag-reorder, tooltips (G2/G3).
 - Live check (this machine): pill with 7 items, Claude's running dot, rounded blur; clicking not exercised live (minimize/activate would act on the developer's own windows).
 - Fix found on the way (owner A's file): `RenderHost` never called `ID2D1DeviceContext::SetDpi`, so everything drew at 96 dpi on a 150 % screen. Added to `CreateTarget` and `Resize`. The menu bar and grid were affected the same way.
+
+### Switch gate on the dock build
+- First run on the dock build: FAIL, 1 of 117 (`[restore-cli] rc == 0`, exit code 1). Cause found in the logs: `velora-watchdog --restore` terminated the shell and, 87 ms later, the shell's own watchdog started a second restore ("shell crashed"); the second one deleted the dirty marker first and the CLI's `DeleteFile` saw it in delete-pending state, so it reported "could not remove dirty marker" although the marker was gone. A pre-existing race in Day 2 code; the second appbar made the restore slower and widened the window. The earlier unexplained failure on the menubar build (2 of 117) was probably the same family but was not captured.
+- Fix: `RemoveDirtyMarker` retries for up to 200 ms and counts "gone a moment later" as success (owner A's file, small). After the fix: gate PASS 117/117 (`build/gate_dock2.log`); more runs below.

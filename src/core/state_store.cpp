@@ -141,8 +141,20 @@ bool DirtyMarkerExists(const std::filesystem::path& path) {
 
 bool RemoveDirtyMarker(const std::filesystem::path& path) {
     if (path.empty()) return true;
-    if (DeleteFileW(path.c_str())) return true;
-    return GetLastError() == ERROR_FILE_NOT_FOUND || GetLastError() == ERROR_PATH_NOT_FOUND;
+    // Two restorers can race (`velora-watchdog --restore` terminates the shell, whose own watchdog then starts a
+    // restore too): the loser sees the marker in delete-pending state (access denied / sharing violation) while
+    // the winner finishes the job. Treat "gone a moment later" as success.
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        if (DeleteFileW(path.c_str())) return true;
+        DWORD err = GetLastError();
+        if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) return true;
+        Sleep(10);
+        if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) {
+            DWORD e2 = GetLastError();
+            if (e2 == ERROR_FILE_NOT_FOUND || e2 == ERROR_PATH_NOT_FOUND) return true;
+        }
+    }
+    return false;
 }
 
 }  // namespace velora
