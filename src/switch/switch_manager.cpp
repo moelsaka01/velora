@@ -140,8 +140,13 @@ bool SwitchManager::Enter() {
     }
 
     // 4. Appbar so maximized windows respect Velora's bar. Degrades, never fails Enter.
-    if (!bar_.Create(instance_, nullptr, Edge::Top, tokens::size::kMenuBarHeight, tokens::kLight.surfaceStrong.argb))
+    if (!bar_.Create(instance_, nullptr, Edge::Top, tokens::size::kMenuBarHeight, tokens::kLight.surfaceStrong.argb)) {
         log::Warn("enter: appbar unavailable; continuing without work-area reservation");
+    } else {
+        // Recovery ABM_REMOVEs this handle if the shell dies without unregistering.
+        state_.appbarHwnds = {static_cast<std::uint64_t>(reinterpret_cast<UINT_PTR>(bar_.Hwnd()))};
+        if (!SaveState(state_, statePath)) log::Warn("enter: could not record the appbar handle in state.json");
+    }
 
     entered_ = true;
     bus_.Post(EventType::Entered);

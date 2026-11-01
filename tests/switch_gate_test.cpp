@@ -31,6 +31,7 @@
 #include "core/runtime.h"
 #include "core/state_store.h"
 #include "core/text.h"
+#include "switch/restore.h"
 #include "switch/taskbar.h"
 
 using namespace velora;
@@ -76,6 +77,8 @@ double PollUntil(const std::function<bool()>& pred, double timeoutMs, double sta
 
 constexpr UINT WM_FX_RESTART = WM_APP + 1;  // simulate an Explorer restart
 constexpr UINT WM_FX_HIDE = WM_APP + 2;     // hide trays (as if a shell crashed mid-session)
+constexpr UINT WM_FX_DESTROY = WM_APP + 3;  // no taskbar at all (Explorer not started yet)
+constexpr UINT WM_FX_CREATE = WM_APP + 4;   // Explorer started late: hidden trays; wParam=1 also broadcasts TaskbarCreated
 constexpr wchar_t kAppClass[] = L"VeloraGateApp";
 
 class Fixture {
@@ -91,6 +94,8 @@ public:
     }
     void RestartExplorer() { SendMessageW(control_, WM_FX_RESTART, 0, 0); }
     void HideTrays() { SendMessageW(control_, WM_FX_HIDE, 0, 0); }
+    void DestroyTrays() { SendMessageW(control_, WM_FX_DESTROY, 0, 0); }
+    void CreateTraysHidden(bool broadcast) { SendMessageW(control_, WM_FX_CREATE, broadcast ? 1 : 0, 0); }
     const std::vector<HWND>& Trays() const { return trays_; }
     std::vector<HWND> AppWindows() const { return apps_; }
 
@@ -104,6 +109,13 @@ private:
         if (self) {
             if (m == WM_FX_RESTART) { self->DoRestart(); return 0; }
             if (m == WM_FX_HIDE) { for (HWND t : self->trays_) ShowWindow(t, SW_HIDE); return 0; }
+            if (m == WM_FX_DESTROY) { for (HWND t : self->trays_) DestroyWindow(t); self->trays_.clear(); return 0; }
+            if (m == WM_FX_CREATE) {
+                self->MakeTrays();
+                for (HWND t : self->trays_) ShowWindow(t, SW_HIDE);
+                if (w) PostMessageW(HWND_BROADCAST, RegisterWindowMessageW(CurrentProfile().taskbarCreatedMessage.c_str()), 0, 0);
+                return 0;
+            }
             if (m == WM_CLOSE) { PostQuitMessage(0); return 0; }
         }
         return DefWindowProcW(h, m, w, l);
@@ -417,6 +429,7 @@ void PhaseCycles() {
         if (!exited) fail("shell still running after exit");
         else if (s.shell.ExitCode() != 0) fail("shell exit code " + std::to_string(s.shell.ExitCode()));
         if (DirtyMarkerExists(DirtyMarkerPath())) fail("dirty marker left after exit");
+        if (std::filesystem::exists(StatePath())) fail("state.json not consumed on clean exit");
         Proc wd{OpenProcess(SYNCHRONIZE, FALSE, s.watchdogPid), s.watchdogPid};
         if (wd.h && !WaitExit(wd.h, 3000)) fail("watchdog still running after exit");
         if (wd.h) CloseHandle(wd.h);
@@ -448,17 +461,19 @@ void PhaseKills() {
         double markerMs = PollUntil([] { return !DirtyMarkerExists(DirtyMarkerPath()); }, 5000, t0);
         g_samples["kill_restore_ms"].push_back(visibleMs);
 
-        bool good = visibleMs >= 0 && visibleMs <= 1000 && markerMs >= 0;
+        bool good = visibleMs >= 0 && visibleMs <= 1000 && markerMs >= 0 && !std::filesystem::exists(StatePath());
         Proc wd{OpenProcess(SYNCHRONIZE, FALSE, s.watchdogPid), s.watchdogPid};
         bool wdGone = !wd.h || WaitExit(wd.h, 3000);
         if (wd.h) CloseHandle(wd.h);
-        Sleep(100);
-        RECT workAfter = PrimaryWorkArea();
-        bool workOk = !g_realExplorer || EqualRect(&workBefore, &workAfter);
+        // The dead shell's appbar must be gone and the work area back as recorded: measured from the kill.
+        double workMs = g_realExplorer ? PollUntil([&] { RECT w = PrimaryWorkArea(); return EqualRect(&workBefore, &w) != FALSE; }, 3000, t0) : 0;
+        if (g_realExplorer && workMs >= 0) g_samples["kill_workarea_ms"].push_back(workMs);
+        bool workOk = workMs >= 0 && workMs <= 1500;
         std::string d = DiffWithRetry(before);
         Record("kill " + std::to_string(i), good && wdGone && workOk && d.empty(),
                "taskbars " + Fmt(visibleMs) + " ms, marker " + Fmt(markerMs) + " ms, watchdog gone " + std::to_string(wdGone) +
-                   ", work area ok " + std::to_string(workOk) + (d.empty() ? "" : ", windows: " + d));
+                   ", work area back after " + (g_realExplorer ? Fmt(workMs) + " ms" : std::string("n/a (no real shell)")) +
+                   (d.empty() ? "" : ", windows: " + d));
         if (good && wdGone && workOk && d.empty()) ++ok;
     }
     Record("all kills recovered within 1 s", ok == g_kills, std::to_string(ok) + "/" + std::to_string(g_kills));
@@ -470,6 +485,7 @@ void PhaseHangs() {
     int ok = 0;
     for (int i = 0; i < g_hangs; ++i) {
         ResetWorld();
+        RECT workBefore = PrimaryWorkArea();
         Session s = StartShell();
         if (s.enterMs < 0) { Record("hang " + std::to_string(i) + ": enter", false); continue; }
         Sleep(1100 + rng() % 900);  // a few heartbeats in, random phase
@@ -485,10 +501,12 @@ void PhaseHangs() {
         bool killed = WaitExit(s.shell.h, 3000);
         bool markerGone = PollUntil([] { return !DirtyMarkerExists(DirtyMarkerPath()); }, 2000) >= 0;
         g_samples["hang_restore_ms"].push_back(visibleMs);
-        bool good = visibleMs >= 0 && visibleMs <= 3000 && killed && markerGone;
+        double workMs = g_realExplorer ? PollUntil([&] { RECT w = PrimaryWorkArea(); return EqualRect(&workBefore, &w) != FALSE; }, 6000, t0) : 0;
+        if (g_realExplorer && workMs >= 0) g_samples["hang_workarea_ms"].push_back(workMs);
+        bool good = visibleMs >= 0 && visibleMs <= 3000 && killed && markerGone && workMs >= 0 && !std::filesystem::exists(StatePath());
         Record("hang " + std::to_string(i), good,
                "taskbars " + Fmt(visibleMs) + " ms, hung shell terminated " + std::to_string(killed) + ", marker gone " +
-                   std::to_string(markerGone));
+                   std::to_string(markerGone) + ", work area back after " + (g_realExplorer ? Fmt(workMs) + " ms" : std::string("n/a")));
         if (good) ++ok;
     }
     Record("all hangs recovered within 3 s", ok == g_hangs, std::to_string(ok) + "/" + std::to_string(g_hangs));
@@ -828,6 +846,90 @@ void PhaseWatchdogLifecycle() {
     }
 }
 
+// ------------------------------------------------------------- restore correctness (review PR B)
+
+void SetLoginTimings(const wchar_t* wait, const wchar_t* retry, const wchar_t* max) {
+    SetEnvironmentVariableW(L"VELORA_TEST_LOGIN_WAIT_MS", wait);
+    SetEnvironmentVariableW(L"VELORA_TEST_LOGIN_RETRY_MS", retry);
+    SetEnvironmentVariableW(L"VELORA_TEST_LOGIN_MAX_MS", max);
+}
+
+void PhaseRestoreCorrectness() {
+    g_phase = "restore-correctness";
+    sw::RestoreOptions opt;
+    opt.reason = "gate test";
+
+    // 5. state.json is applied only while the dirty marker exists, and is consumed afterwards.
+    ResetWorld();
+    g_fx.HideTrays();
+    {
+        SwitchState st;
+        st.monitors = sw::SnapshotMonitors();
+        st.taskbarAutoHide = true;
+        SaveState(st, StatePath());  // stale: no marker
+    }
+    auto r = sw::RestoreWindowsDesktop(opt);
+    EXPECT(!r.hadState, "state.json ignored without a dirty marker");
+    EXPECT(!std::filesystem::exists(StatePath()), "stale state.json removed");
+    EXPECT(TraysAll(true), "taskbars are still shown (always safe)");
+
+    ResetWorld();
+    g_fx.HideTrays();
+    LeaveCrashDebris(0, 0);
+    r = sw::RestoreWindowsDesktop(opt);
+    EXPECT(r.hadState && r.markerRemoved && r.taskbarsVisible, "state.json applied with a marker");
+    EXPECT(!std::filesystem::exists(StatePath()) && !DirtyMarkerExists(DirtyMarkerPath()), "state.json and marker consumed");
+
+    // 6. No taskbar window is not success; the login restore stays pending and retries.
+    ResetWorld();
+    g_fx.DestroyTrays();
+    EXPECT(!sw::WaitTaskbarsVisible(true, 100) && !sw::WaitTaskbarsVisible(false, 100), "an empty tray list never reports success");
+    LeaveCrashDebris(0, 0);
+    sw::RestoreOptions login = opt;
+    login.requireTaskbar = true;
+    r = sw::RestoreWindowsDesktop(login);
+    EXPECT(r.pending && !r.markerRemoved && DirtyMarkerExists(DirtyMarkerPath()) && std::filesystem::exists(StatePath()),
+           "restore without a taskbar is pending: marker and state kept");
+
+    //   a) retry on TaskbarCreated (the periodic retry is set far away)
+    SetLoginTimings(L"200", L"60000", L"30000");
+    {
+        Proc lc = Spawn(g_watchdogExe, L"--login-check");
+        Sleep(1500);
+        EXPECT(lc.Alive() && DirtyMarkerExists(DirtyMarkerPath()), "login check keeps waiting, marker kept");
+        g_fx.CreateTraysHidden(/*broadcast=*/true);
+        EXPECT(WaitExit(lc.h, 5000) && lc.ExitCode() == 0, "TaskbarCreated triggers the retry; exit " + std::to_string(lc.ExitCode()));
+        EXPECT(TraysAll(true) && !DirtyMarkerExists(DirtyMarkerPath()), "restored after the retry");
+    }
+    //   b) periodic retry (no broadcast)
+    ResetWorld();
+    g_fx.DestroyTrays();
+    LeaveCrashDebris(0, 0);
+    SetLoginTimings(L"200", L"300", L"30000");
+    {
+        Proc lc = Spawn(g_watchdogExe, L"--login-check");
+        Sleep(800);
+        EXPECT(lc.Alive() && DirtyMarkerExists(DirtyMarkerPath()), "login check pending");
+        g_fx.CreateTraysHidden(/*broadcast=*/false);
+        EXPECT(WaitExit(lc.h, 5000) && lc.ExitCode() == 0, "periodic retry restores; exit " + std::to_string(lc.ExitCode()));
+        EXPECT(TraysAll(true) && !DirtyMarkerExists(DirtyMarkerPath()), "restored by the periodic retry");
+    }
+    //   c) the taskbar never appears: gives up, reports pending (not success), marker kept
+    ResetWorld();
+    g_fx.DestroyTrays();
+    LeaveCrashDebris(0, 0);
+    SetLoginTimings(L"200", L"300", L"1500");
+    {
+        Proc lc = Spawn(g_watchdogExe, L"--login-check");
+        EXPECT(WaitExit(lc.h, 8000), "login check gives up");
+        EXPECT(lc.ExitCode() == 3, "reports pending (3), not success; exit " + std::to_string(lc.ExitCode()));
+        EXPECT(DirtyMarkerExists(DirtyMarkerPath()), "marker kept for the next attempt");
+    }
+    SetLoginTimings(nullptr, nullptr, nullptr);
+    g_fx.CreateTraysHidden(false);
+    ResetWorld();  // trays visible again, debris removed
+}
+
 // ------------------------------------------------------------- driver
 
 void WriteResults(const std::filesystem::path& out) {
@@ -904,7 +1006,7 @@ int wmain(int argc, wchar_t** argv) {
     struct { const char* name; void (*fn)(); } phases[] = {
         {"dirty marker", PhaseDirtyMarker},      {"--restore CLI", PhaseRestoreCli},
         {"emergency hotkey", PhaseEmergencyHotkey}, {"watchdog death", PhaseWatchdogDeath},
-        {"watchdog lifecycle", PhaseWatchdogLifecycle},
+        {"watchdog lifecycle", PhaseWatchdogLifecycle}, {"restore correctness", PhaseRestoreCorrectness},
         {"explorer restarts", PhaseExplorerRestarts}, {"forced kills", PhaseKills},
         {"hangs", PhaseHangs},                   {"enter/exit cycles", PhaseCycles},
     };

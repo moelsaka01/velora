@@ -133,6 +133,25 @@ void AppBar::SetPos() {
     inSetPos_ = false;
 }
 
+int RemoveRecordedAppbars(const SwitchState& state) {
+    int sent = 0;
+    for (std::uint64_t raw : state.appbarHwnds) {
+        HWND h = reinterpret_cast<HWND>(static_cast<UINT_PTR>(raw));
+        if (!h) continue;
+        if (IsWindow(h)) {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(h, &pid);
+            if (pid != state.shellPid) continue;  // handle reused by another process window: not ours to touch
+        }
+        APPBARDATA abd{sizeof abd};
+        abd.hWnd = h;
+        SHAppBarMessage(ABM_REMOVE, &abd);
+        ++sent;
+    }
+    if (sent) log::Info("recovery: ABM_REMOVE sent for " + std::to_string(sent) + " recorded appbar(s)");
+    return sent;
+}
+
 LRESULT CALLBACK AppBar::WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_NCCREATE) {
         auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp);

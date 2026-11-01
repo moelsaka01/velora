@@ -64,8 +64,9 @@ void SetTaskbarsVisible(bool visible) {
 bool WaitTaskbarsVisible(bool visible, DWORD timeoutMs) {
     ULONGLONG deadline = GetTickCount64() + timeoutMs;
     for (;;) {
-        bool done = true;
-        for (HWND h : FindTrayWindows())
+        std::vector<HWND> trays = FindTrayWindows();
+        bool done = !trays.empty();
+        for (HWND h : trays)
             if ((IsWindowVisible(h) != FALSE) != visible) done = false;
         if (done) return true;
         if (GetTickCount64() >= deadline) return false;
@@ -125,35 +126,68 @@ std::vector<MonitorState> SnapshotMonitors() {
     return c.out;
 }
 
-int ReclaimWorkAreas(const SwitchState& state) {
-    int changed = 0;
-    struct Cur { std::wstring name; RECT work, mon; };
-    std::vector<Cur> current;
+namespace {
+
+struct CurrentMonitor {
+    std::wstring name;
+    RECT work, mon;
+};
+
+std::vector<CurrentMonitor> CurrentMonitors() {
+    std::vector<CurrentMonitor> current;
     EnumDisplayMonitors(
         nullptr, nullptr,
         [](HMONITOR m, HDC, LPRECT, LPARAM lp) -> BOOL {
             MONITORINFOEXW mi{};
             mi.cbSize = sizeof mi;
             if (GetMonitorInfoW(m, &mi))
-                reinterpret_cast<std::vector<Cur>*>(lp)->push_back({mi.szDevice, mi.rcWork, mi.rcMonitor});
+                reinterpret_cast<std::vector<CurrentMonitor>*>(lp)->push_back({mi.szDevice, mi.rcWork, mi.rcMonitor});
             return TRUE;
         },
         reinterpret_cast<LPARAM>(&current));
+    return current;
+}
 
+// The recorded work area of `rec` if it is still meaningful for the monitor now
+// present under the same name (it exists, the rect is valid and fits the monitor).
+bool RecordedWorkArea(const MonitorState& rec, const std::vector<CurrentMonitor>& current, RECT* want,
+                      const CurrentMonitor** cur) {
+    auto it = std::find_if(current.begin(), current.end(), [&](const CurrentMonitor& c) { return c.name == rec.deviceName; });
+    if (it == current.end()) return false;
+    RECT w{rec.workArea.left, rec.workArea.top, rec.workArea.right, rec.workArea.bottom};
+    if (w.right <= w.left || w.bottom <= w.top) return false;
+    RECT inter;
+    if (!IntersectRect(&inter, &w, &it->mon) || !EqualRect(&inter, &w)) return false;  // layout changed: leave alone
+    *want = w;
+    *cur = &*it;
+    return true;
+}
+
+}  // namespace
+
+int ReclaimWorkAreas(const SwitchState& state) {
+    int changed = 0;
+    auto current = CurrentMonitors();
     for (const auto& rec : state.monitors) {
-        auto it = std::find_if(current.begin(), current.end(), [&](const Cur& c) { return c.name == rec.deviceName; });
-        if (it == current.end()) continue;
-        RECT want{rec.workArea.left, rec.workArea.top, rec.workArea.right, rec.workArea.bottom};
-        if (want.right <= want.left || want.bottom <= want.top) continue;
-        if (EqualRect(&want, &it->work)) continue;
-        RECT inter;
-        if (!IntersectRect(&inter, &want, &it->mon) || !EqualRect(&inter, &want)) continue;  // layout changed: leave alone
+        RECT want;
+        const CurrentMonitor* cur = nullptr;
+        if (!RecordedWorkArea(rec, current, &want, &cur) || EqualRect(&want, &cur->work)) continue;
         if (SystemParametersInfoW(SPI_SETWORKAREA, 0, &want, SPIF_SENDCHANGE)) {
             ++changed;
             log::Info("reclaimed work area on a monitor");
         }
     }
     return changed;
+}
+
+bool WorkAreasMatch(const SwitchState& state) {
+    auto current = CurrentMonitors();
+    for (const auto& rec : state.monitors) {
+        RECT want;
+        const CurrentMonitor* cur = nullptr;
+        if (RecordedWorkArea(rec, current, &want, &cur) && !EqualRect(&want, &cur->work)) return false;
+    }
+    return true;
 }
 
 std::wstring CurrentWallpaper() {

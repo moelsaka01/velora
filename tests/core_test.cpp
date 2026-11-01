@@ -59,6 +59,7 @@ void StateRoundTrip() {
     s.shellPid = 4242;
     s.watchdogPid = 4243;
     s.shellStartTime = 133000000000000000ull;
+    s.appbarHwnds = {0x30A4Cull, 0x1F00D2ull};
 
     auto back = velora::ParseState(velora::SerializeState(s));
     CHECK(back.has_value());
@@ -68,6 +69,8 @@ void StateRoundTrip() {
     CHECK(back->foregroundHwnd == s.foregroundHwnd);
     CHECK(back->shellPid == s.shellPid && back->watchdogPid == s.watchdogPid);
     CHECK(back->shellStartTime == s.shellStartTime);
+    CHECK(back->appbarHwnds == s.appbarHwnds);
+    CHECK(velora::ParseState(R"({"shellPid":7})")->appbarHwnds.empty());  // older files still load
 
     // Tolerant: partial / newer files still load, garbage does not.
     auto partial = velora::ParseState(R"({"schemaVersion":9,"future":1,"taskbarAutoHide":true})");

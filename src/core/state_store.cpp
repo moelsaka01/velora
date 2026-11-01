@@ -61,6 +61,9 @@ std::string SerializeState(const SwitchState& s) {
     root.emplace_back("shellPid", s.shellPid);
     root.emplace_back("watchdogPid", s.watchdogPid);
     root.emplace_back("shellStartTime", static_cast<std::int64_t>(s.shellStartTime));
+    json::Array bars;
+    for (std::uint64_t h : s.appbarHwnds) bars.emplace_back(static_cast<std::int64_t>(h));
+    root.emplace_back("appbarHwnds", std::move(bars));
     return json::Value(std::move(root)).Dump();
 }
 
@@ -80,6 +83,8 @@ std::optional<SwitchState> ParseState(std::string_view text) {
     s.shellPid = static_cast<std::uint32_t>(num("shellPid", 0));
     s.watchdogPid = static_cast<std::uint32_t>(num("watchdogPid", 0));
     s.shellStartTime = static_cast<std::uint64_t>(num("shellStartTime", 0));
+    if (const auto* arr = doc->Find("appbarHwnds"); arr && arr->IsArray())
+        for (const auto& h : arr->AsArray()) s.appbarHwnds.push_back(static_cast<std::uint64_t>(h.AsInt(0)));
     if (const auto* arr = doc->Find("monitors")) {
         for (const auto& m : arr->AsArray()) {
             MonitorState ms;
