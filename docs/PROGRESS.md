@@ -5,7 +5,7 @@ Status: not started | in progress | gated | passed | deferred
 | Module | Status | Evidence |
 |---|---|---|
 | core | passed (G1) | contracts v1 + json, state store, IPC pipe, runtime/profile, log, event bus; core_test passes (PR #9 merged, CI green) |
-| switch | gated | Day-2 safety gate PASS locally (111/111 checks after the review fixes, see "Day 2 review fixes"; original run 55/55); CI result recorded on the PRs |
+| switch | gated | Day-2 safety gate PASS locally (117/117 checks on main 364f267, see "Day 2 review fixes"; original run 55/55); CI result recorded on the PRs |
 | render | passed (base) | tokens + animation engine (animation_test) + RenderHost (render_host_test: D3D11 + composition swap chain + D2D draw/present/resize, DWM Mica/rounded-corner helpers). No consumers yet (dock/menubar are Day 3) |
 | dock | not started | |
 | menubar | not started | |
@@ -100,3 +100,9 @@ Raw results: `docs/evidence/switch_gate_2026-11-01_merged-main.json`. Run once a
 - All phases pass except `enter/exit cycles`: 49/50 clean. Cycle 16 failed only on `window list differs: lost ... (Chrome_WidgetWin_1)`: a window of another application (Chrome/Electron class) present before and gone after. Every Velora-owned check in that cycle (taskbar restored, marker gone, watchdog exited, work area identical, state.json consumed) passed.
 - Same signature as the earlier unexplained run (47 cycles failed on `Chrome_WidgetWin_1`, 2026-11-01). Seen twice in about 14 full or cycle runs; not reproduced on demand, cause not found. Not shown to be caused by Velora and not shown to be unrelated: unexplained.
 - Other numbers: kills 10/10 (taskbars back median 100 ms, max 124; work area median 238 ms, max 292); hangs 3/3 (max 2285 ms); hotkey 41 ms; Explorer restarts (simulated) 3/3; enter median 380 ms (max 885), exit median 389 ms (max 698).
+
+### Full switch gate on main 364f267 (after #18) — PASS 117/117 checks — current result
+Raw results: `docs/evidence/switch_gate_2026-11-01_main-364f267.json`. Real Explorer, 1 monitor, non-elevated.
+- 117/117 checks, 0 failed. Enter median 231 ms (max 486), exit median 234 ms (max 484); kills 10/10 taskbars back median 42 ms (max 54); hangs 3/3 max 2234 ms; hotkey 23 ms.
+- This supersedes the 110/112 run on 789ca4c above. That failure (`Chrome_WidgetWin_1` window gone between snapshots) was external: since #18 the gate attributes vanished windows, and this run logged `externalLostWindows` 2 and `externalNewWindows` 1 as external instead of failing. Attribution checks pass, including that a vanished test-owned window and the previously focused window are still failures.
+- Still unmeasured: real Explorer restart, real taskbar hide on real monitors, physical Ctrl+Alt+Shift+Esc (covered by the live test).
