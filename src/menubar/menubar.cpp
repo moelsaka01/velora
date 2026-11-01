@@ -407,8 +407,7 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
                 return true;
             }
             for (const auto& [key, rect] : rightItems_) {
-                if (key.rfind(L"overflow
-", 0) == 0 && inRect(rect, GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) {
+                if (key.rfind(L"overflow\n", 0) == 0 && inRect(rect, GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) {
                     log::Info("menubar: opening the Windows notification overflow (Win+B, Enter)");
                     SendKeys({{VK_LWIN, false}, {'B', false}, {'B', true}, {VK_LWIN, true}});
                     SetTimer(h, kTimerOverflowEnter, 250, nullptr);
