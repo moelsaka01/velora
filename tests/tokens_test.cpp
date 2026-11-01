@@ -3,6 +3,12 @@
 using namespace velora::tokens;
 
 static_assert(size::kDockIconMax > size::kDockIcon);
+static_assert(size::kDockIcon + 2 * size::kDockPadding == dock::kShelfHeight);  // measured: 44 + 2 x 15 = 74
+static_assert(size::kDockIconMax <= size::kDockIcon * dock::kMagnifyPeak + 0.01f);
+static_assert(timing::kDockMagnify.stiffness > 240.0f && timing::kDockMagnify.stiffness < 250.0f);  // (2 pi / 0.4)^2
+static_assert(timing::kDockMagnify.damping < 4 * 3.1415927f / 0.4f);  // under critical damping: a little bounce
+static_assert(timing::kPanelOpen.damping * timing::kPanelOpen.damping > 3.99f * timing::kPanelOpen.stiffness &&
+              timing::kPanelOpen.damping * timing::kPanelOpen.damping < 4.01f * timing::kPanelOpen.stiffness);  // bounce 0: critically damped
 static_assert(radius::kSmall < radius::kMedium && radius::kMedium < radius::kLarge);
 static_assert(timing::kFast < timing::kNormal && timing::kNormal < timing::kSlow);
 static_assert(PaletteFor(Theme::Dark).text.argb != PaletteFor(Theme::Light).text.argb);

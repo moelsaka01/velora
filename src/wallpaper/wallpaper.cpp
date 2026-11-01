@@ -312,6 +312,26 @@ int ApplyVelora(bool dark) {
     return changed;
 }
 
+bool CurrentFor(int left, int top, int right, int bottom, std::wstring* path, int* position) {
+    ComScope com;
+    if (!com.Usable()) return false;
+    ComPtr<IDesktopWallpaper> dw;
+    if (FAILED(CoCreateInstance(__uuidof(DesktopWallpaper), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&dw)))) return false;
+    std::vector<MonitorInfo> monitors;
+    if (!Monitors(dw.Get(), &monitors)) return false;
+    for (const auto& m : monitors) {
+        if (m.rect.left != left || m.rect.top != top || m.rect.right != right || m.rect.bottom != bottom) continue;
+        PWSTR cur = nullptr;
+        if (FAILED(dw->GetWallpaper(m.id.c_str(), &cur))) return false;
+        *path = TakeString(cur);
+        DESKTOP_WALLPAPER_POSITION pos = DWPOS_FILL;
+        dw->GetPosition(&pos);
+        *position = static_cast<int>(pos);
+        return !path->empty();
+    }
+    return false;
+}
+
 int RestoreOriginal() {
     auto backup = BackupPath();
     if (backup.empty() || !std::filesystem::exists(backup)) return 0;
