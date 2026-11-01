@@ -2,4 +2,4 @@
 
 | Component | Source | License | Used in | Notes |
 |---|---|---|---|---|
-| | | | | |
+| cairoshell/ManagedShell (Cairo Shell contributors) | https://github.com/cairoshell/ManagedShell, `src/ManagedShell.AppBar/ExplorerHelper.cs`, `AppBarManager.cs`, `AppBarWindow.cs` (read 2026-11-01) | Apache-2.0 | `src/switch/taskbar.cpp`, `src/switch/appbar.cpp`, `src/switch/switch_manager.cpp` | Logic ported to C++20/Win32, not copied: taskbar hiding via SetWindowPos(SWP_HIDEWINDOW) on primary/secondary tray windows plus ABM_SETSTATE auto-hide and a periodic re-hide check; appbar ABM_NEW / ABM_QUERYPOS / ABM_SETPOS order with the explicit edge-thickness adjustment, ABM_ACTIVATE / ABM_WINDOWPOSCHANGED forwarding, re-hide of taskbars after appbar changes. The tray-icon hosting (WindowsTray) is not ported yet (menubar G1, Day 3+). TaskbarCreated handling is written to the documented Win32 contract; the ManagedShell AppBar module has no equivalent. |

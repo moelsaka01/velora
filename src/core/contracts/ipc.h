@@ -15,9 +15,13 @@ inline constexpr wchar_t kWatchdogPipePrefix[] = L"\\\\.\\pipe\\velora-watchdog-
 // Each message is one UTF-8 JSON object, framed by a little-endian u32 length.
 inline constexpr std::uint32_t kMaxMessageBytes = 64 * 1024;
 
-// Shell heartbeat to the watchdog (CLAUDE.md §4): every 1 s, timeout 3 s.
-inline constexpr std::uint32_t kHeartbeatIntervalMs = 1000;
-inline constexpr std::uint32_t kHeartbeatTimeoutMs  = 3000;
+// Shell heartbeat to the watchdog (CLAUDE.md §4). The §4 figure of 3 s is the
+// end-to-end budget "hang -> Windows restored"; the timeout is set below it so
+// detection (timeout) + recovery (~0.1 s) stays under 3 s whatever the phase of
+// the last heartbeat. See DECISIONS.md.
+inline constexpr std::uint32_t kHeartbeatIntervalMs = 500;
+inline constexpr std::uint32_t kHeartbeatTimeoutMs  = 2500;
+static_assert(kHeartbeatTimeoutMs + 500 <= 3000, "hang recovery budget is 3 s");
 
 enum class Kind : std::uint8_t { Request, Response, Event };
 
