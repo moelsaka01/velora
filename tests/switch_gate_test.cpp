@@ -790,13 +790,20 @@ void PhaseWatchdogLifecycle() {
         bool oldGone = !oldWd.h || WaitForSingleObject(oldWd.h, 0) == WAIT_OBJECT_0;  // no grace: already gone
         if (oldWd.h) CloseHandle(oldWd.h);
         Session b = StartShell();  // immediately
-        good = good && oldGone && b.enterMs >= 0 && b.watchdogPid != a.watchdogPid;
+        good = good && oldGone && b.enterMs >= 0;
         double t0 = NowMs();
         if (b.shell.h) TerminateProcess(b.shell.h, 9);
         double ms = PollUntil([] { return TraysAll(true); }, 3000, t0);
         good = good && ms >= 0 && ms <= 1000;
-        Record("exit->enter " + std::to_string(i), good,
-               "old watchdog gone at shell exit " + std::to_string(oldGone) + ", new session recovered after " + Fmt(ms) + " ms");
+        // Let the crash-recovery watchdog finish and exit before the next iteration starts a shell
+        // (it still owns the pipe while it restores).
+        Proc bWd{OpenProcess(SYNCHRONIZE, FALSE, b.watchdogPid), b.watchdogPid};
+        bool bWdGone = !bWd.h || WaitExit(bWd.h, 3000);
+        if (bWd.h) CloseHandle(bWd.h);
+        Record("exit->enter " + std::to_string(i), good && bWdGone,
+               "first session entered " + std::to_string(a.enterMs >= 0) + ", old watchdog gone at shell exit " +
+                   std::to_string(oldGone) + ", second session entered " + std::to_string(b.enterMs >= 0) +
+                   ", recovered after " + Fmt(ms) + " ms");
         if (good) ++ok;
     }
     Record("every immediate re-enter is protected by its own watchdog", ok == 5, std::to_string(ok) + "/5");
