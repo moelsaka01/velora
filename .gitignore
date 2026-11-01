@@ -1,0 +1,48 @@
+# Build
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CMakeUserPresets.json
+Testing/
+compile_commands.json
+
+# vcpkg
+vcpkg_installed/
+.vcpkg/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.opendb
+x64/
+x86/
+ARM64/
+Debug/
+Release/
+
+# C++ artifacts
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+*.log
+*.tlog
+
+# Keep tracked binaries/assets
+!installer/*.ico
+
+# OS / editors
+Thumbs.db
+.DS_Store
+.vscode/
