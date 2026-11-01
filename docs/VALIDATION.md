@@ -11,6 +11,7 @@ Physical and live checks per module, seeded from the evidence in [PROGRESS.md](P
 | menubar | live in the top appbar; Velora menu, active app, battery, clock | tray-icon hosting (blocked); power menu actions; global app menus (tiers 1-3) |
 | apps | index of 191 apps, grid with search drawn live | launching from the grid; MSIX/Store/elevated launches |
 | wallpaper | apply, backup, restore on exit and on crash recovery (1 monitor) | multi-monitor |
+| input safety | code audit of hotkeys/hooks/SendInput/registry/affinity (no persistent write found); `--exit` process check; ⋯ key release + focus guard (unit build only) | **PrintScreen and Win+Shift+S during and after Velora Mode** (tools/input_check.ps1 -Send, before/during/after) - the original failure is unexplained and unreproduced; user reports it cleared after a reboot |
 | bench | scripted runs with raw CSVs in `bench/` | clean-boot method; GPU memory; 3-run medians on a second machine |
 | overview, search, files, control, notify, desktops, hotkeys, settings | none | all (modules not built or not yet verified) |
 | compat | none | all |
