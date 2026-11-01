@@ -125,6 +125,7 @@ Each module has gates. **G1** = minimum to ship; **G2** = target; **G3** = stret
 - **hotkeys:** Cmd-style mappings are opt-in: Alt↔Win as Cmd, Cmd+Space search, Cmd+Tab app switcher, Ctrl+Up overview, Cmd+Q quit (WM_CLOSE). Don't break Windows shortcuts by default.
 - **gaming mode:** auto-enabled when a fullscreen exclusive or borderless-fullscreen app is foreground (or manually). Disable animations and blur, pause the indexer and thumbnails, hide the bars, drop to minimal timers. Never touch the game process.
 - **updates:** GitHub Releases with Stable and Preview channels. Verify downloads with SHA-256 plus a signature (minisign or Authenticode). User-confirmed install; keep the previous version for rollback. Track macOS UI changes in `docs/PARITY.md` (manual backlog from Apple's public release notes).
+- **apple-services (optional, owner C, scheduled D6 after the G1 gates of other modules; off by default, enabled in Settings):** launch and surface Apple's own Windows apps. G1 detect Apple Music, Apple TV, Apple Devices, iCloud for Windows and iTunes (MSIX/registry); launch them; offer Microsoft Store install links (`ms-windows-store://` URIs) for missing ones; an "Apple" group in the launcher. G2 iCloud Drive and iCloud Photos folders in the Files sidebar when present (read the local sync paths; no network calls). G3 an "App Store (web)" entry that opens apps.apple.com in the default browser, labeled browse-only. **Hard rules:** Velora never asks for, reads, stores or transmits Apple Account credentials or tokens; sign-in happens only in Apple's own apps. No scraping or reimplementing Apple's private APIs.
 
 ---
 
@@ -206,6 +207,6 @@ UI works · underlying function works on real Windows resources · user data pre
 
 ## 13. KNOWN LIMITATIONS TO DOCUMENT (EXPECTED)
 
-Menus of some apps are unreachable by any API; elevated windows can't be controlled from a non-elevated shell; toast capture depends on user consent and the app; undocumented virtual-desktop APIs can break with Windows updates; exact macOS behaviors (e.g. app-level vs. window-level focus) don't map 1:1 onto Windows; compat runs only simple x86_64 programs and supports no Metal.
+Menus of some apps are unreachable by any API; elevated windows can't be controlled from a non-elevated shell; toast capture depends on user consent and the app; undocumented virtual-desktop APIs can break with Windows updates; exact macOS behaviors (e.g. app-level vs. window-level focus) don't map 1:1 onto Windows; compat runs only simple x86_64 programs and supports no Metal; Mac App Store apps can't be downloaded or run, and Velora's compat layer is not an App Store runtime.
 
 **Start now with Day 1. First output: `docs/RESEARCH.md` with the verified reuse matrix, then the repo skeleton.**
