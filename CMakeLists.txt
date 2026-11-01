@@ -30,3 +30,15 @@ enable_testing()
 add_executable(smoke_test tests/smoke_test.cpp)
 target_link_libraries(smoke_test PRIVATE velora_version)
 add_test(NAME smoke_test COMMAND smoke_test)
+
+# Shared contracts (header-only) and their wire schema.
+file(READ ipc/v1.json VELORA_IPC_JSON)
+string(JSON VELORA_IPC_VERSION GET "${VELORA_IPC_JSON}" "version")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ipc/v1.json")
+add_library(velora_contracts INTERFACE)
+target_include_directories(velora_contracts INTERFACE src)
+
+add_executable(contracts_test tests/contracts_test.cpp)
+target_link_libraries(contracts_test PRIVATE velora_contracts)
+target_compile_definitions(contracts_test PRIVATE VELORA_IPC_JSON_VERSION=${VELORA_IPC_VERSION})
+add_test(NAME contracts_test COMMAND contracts_test)

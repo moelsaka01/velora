@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/moelsaka01/velora/ipc/v1.json",
+  "title": "Velora IPC v1",
+  "description": "One UTF-8 JSON object per message, framed by a little-endian u32 byte length (max 65536). Backward compatible within the sprint: add optional fields only. Mirrors src/core/contracts/ipc.h.",
+  "version": 1,
+  "type": "object",
+  "required": ["v", "kind", "type"],
+  "properties": {
+    "v": { "const": 1 },
+    "kind": { "enum": ["request", "response", "event"] },
+    "id": { "type": "integer", "minimum": 0, "description": "Correlates response to request." },
+    "type": { "enum": ["hello", "heartbeat", "get_state", "enter", "exit", "restore", "open_app", "settings_changed"] },
+    "status": { "type": "integer", "description": "Responses only. 0 ok, 400 bad request, 500 internal, 501 unsupported, 505 version mismatch." },
+    "error": { "type": "string" },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false,
+  "payloads": {
+    "hello": { "client": "string", "pid": "integer", "protocol": "integer" },
+    "heartbeat": { "seq": "integer" },
+    "get_state": {},
+    "enter": {},
+    "exit": {},
+    "restore": { "reason": "string" },
+    "open_app": { "app": ["files", "settings"], "path": "string (optional)" },
+    "settings_changed": { "keys": "array of string" }
+  }
+}
