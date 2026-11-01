@@ -90,8 +90,11 @@ for ($run = 1; $run -le $Runs; $run++) {
     Sample-Phase 'velora' $SampleSec $ids $rows
 
     $sw.Restart()
-    # -Wait: velora-shell is a GUI-subsystem exe, so a plain call returns at once. The helper returns when the shell is gone.
-    Start-Process -FilePath $Shell -ArgumentList "--exit" -Wait
+    # `Start-Process -Wait` adds ~600 ms of its own (measured: 1030 ms vs 400 ms with PassThru + WaitForExit), so wait on
+    # the helper's process object, then until the shell and watchdog processes are really gone.
+    $helper = Start-Process -FilePath $Shell -ArgumentList "--exit" -PassThru
+    $helper.WaitForExit()
+    while (Get-Process velora-shell, velora-watchdog -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 5 }
     $exitMs = $sw.ElapsedMilliseconds
     $csv = Join-Path $OutDir "${stamp}_run$run.csv"
     $rows | Export-Csv -NoTypeInformation -Path $csv

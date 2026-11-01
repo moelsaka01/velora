@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cwctype>
 #include <string>
+#include <thread>
 
 #include "core/log.h"
 #include "core/runtime.h"
@@ -65,6 +66,12 @@ RestoreResult RestoreWindowsDesktop(const RestoreOptions& opt) {
     }
     r.hadState = state.has_value();
 
+    // The wallpaper restore is slow (~300 ms of Explorer round trips) and independent of the taskbar steps:
+    // run it alongside them and join before the marker goes. Only on a normal exit, where the shell is still
+    // alive and nothing it touches is being torn down; recovery keeps the old sequential order.
+    std::thread wallpaperThread;
+    if (!CurrentProfile().IsTest() && !opt.terminateShell) wallpaperThread = std::thread([] { wallpaper::RestoreOriginal(); });
+
     // 1. Taskbar first (never wrong, and the user sees it back at once); then the shell,
     //    which must not be alive to re-hide it behind us. Step 3 re-asserts visibility.
     if (opt.terminateShell) SetTaskbarsVisible(true);
@@ -84,6 +91,7 @@ RestoreResult RestoreWindowsDesktop(const RestoreOptions& opt) {
     if (opt.requireTaskbar && !r.taskbarsVisible) {
         // Pending, not done: keep the marker and state.json so the retry can finish the job.
         r.pending = true;
+        if (wallpaperThread.joinable()) wallpaperThread.join();
         r.totalMs = static_cast<DWORD>(GetTickCount64() - t0);
         log::Warn("restore pending: no taskbar window yet; marker and state kept");
         return r;
@@ -115,7 +123,8 @@ RestoreResult RestoreWindowsDesktop(const RestoreOptions& opt) {
     }
 
     // 5b. Wallpaper: put the user's own back (no-op unless Velora changed it and a backup exists).
-    if (!CurrentProfile().IsTest()) wallpaper::RestoreOriginal();
+    if (wallpaperThread.joinable()) wallpaperThread.join();
+    else if (!CurrentProfile().IsTest()) wallpaper::RestoreOriginal();
 
     // 6. Last: the marker. Until it is gone, recovery stays armed.
     r.markerRemoved = RemoveDirtyMarker(markerPath);
