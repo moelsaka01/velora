@@ -35,6 +35,41 @@ bool IsFrameHost(const std::wstring& exe) {
 }
 }  // namespace
 
+namespace {
+// Velora's own on-demand apps are empty stubs until they reach G1 (docs/PROGRESS.md). Remove a name here
+// in the same change that takes the module to G1.
+constexpr const wchar_t* kNotReadyExecutables[] = {L"velora-files.exe", L"velora-settings.exe"};
+
+std::wstring FileNameOf(const std::wstring& path) {
+    size_t slash = path.find_last_of(L"\\/");
+    return slash == std::wstring::npos ? path : path.substr(slash + 1);
+}
+
+bool IsFilesystemTarget(const std::wstring& launch) {
+    return launch.find(L"shell:") != 0 && launch.find(L"://") == std::wstring::npos && launch.find(L"ms-") != 0;
+}
+}  // namespace
+
+std::vector<DockApp> VisiblePinned(const std::vector<DockApp>& pinned,
+                                   const std::function<bool(const std::wstring&)>& fileExists) {
+    std::vector<DockApp> out;
+    out.reserve(pinned.size());
+    for (const auto& a : pinned) {
+        if (a.internalApps) {
+            out.push_back(a);
+            continue;
+        }
+        const std::wstring& target = !a.exePath.empty() ? a.exePath : a.launch;
+        bool notReady = false;
+        for (const wchar_t* name : kNotReadyExecutables)
+            if (Ieq(FileNameOf(target), name) || Ieq(FileNameOf(a.launch), name)) notReady = true;
+        if (notReady) continue;
+        if (IsFilesystemTarget(a.launch) && !fileExists(a.launch)) continue;
+        out.push_back(a);
+    }
+    return out;
+}
+
 std::vector<DockItem> BuildItems(const std::vector<DockApp>& pinned, const std::vector<DockWindow>& windows,
                                  const std::function<DockApp(const DockWindow&)>& describe) {
     std::vector<DockItem> items;
