@@ -17,9 +17,9 @@ Status: not started | in progress | gated | passed | deferred
 | notify | not started | |
 | desktops | not started | |
 | hotkeys | not started | |
-| watchdog | not started | |
-| files | not started | |
-| settings | not started | |
+| watchdog | in progress | empty target builds (Day 1 skeleton) |
+| files | in progress | empty target builds (Day 1 skeleton) |
+| settings | in progress | empty target builds (Day 1 skeleton) |
 | compat | not started | |
 | installer | not started | |
 

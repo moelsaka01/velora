@@ -49,3 +49,15 @@ target_include_directories(velora_tokens INTERFACE src)
 add_executable(tokens_test tests/tokens_test.cpp)
 target_link_libraries(tokens_test PRIVATE velora_tokens)
 add_test(NAME tokens_test COMMAND tokens_test)
+
+# Binaries (empty skeletons). Resident: shell, watchdog. On-demand: files, settings.
+function(velora_add_app target source)
+  add_executable(${target} WIN32 ${source})
+  target_link_libraries(${target} PRIVATE velora_version velora_contracts velora_tokens)
+  target_compile_definitions(${target} PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+endfunction()
+
+velora_add_app(velora-shell    src/main.cpp)
+velora_add_app(velora-watchdog watchdog/main.cpp)
+velora_add_app(velora-files    apps/files/main.cpp)
+velora_add_app(velora-settings apps/settings/main.cpp)
