@@ -88,3 +88,11 @@ add_dependencies(switch_gate_test velora-shell velora-watchdog)
 add_test(NAME switch_gate
   COMMAND switch_gate_test $<TARGET_FILE:velora-shell> $<TARGET_FILE:velora-watchdog> --out ${CMAKE_BINARY_DIR}/switch_gate_results.json)
 set_tests_properties(switch_gate PROPERTIES TIMEOUT 900)
+
+
+# windows/: top-level window tracking (SetWinEventHook, out-of-context).
+add_library(velora_windows STATIC src/windows/window_tracker.cpp)
+target_link_libraries(velora_windows PUBLIC velora_core dwmapi shell32 user32)
+add_executable(window_tracker_test tests/window_tracker_test.cpp)
+target_link_libraries(window_tracker_test PRIVATE velora_windows)
+add_test(NAME window_tracker_test COMMAND window_tracker_test)
