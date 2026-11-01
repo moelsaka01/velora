@@ -11,6 +11,7 @@ Physical and live checks per module, seeded from the evidence in [PROGRESS.md](P
 | menubar | live in the top appbar; Velora menu, active app, battery, clock | tray-icon hosting (blocked); power menu actions; global app menus (tiers 1-3) |
 | apps | index of 191 apps, grid with search drawn live | launching from the grid; MSIX/Store/elevated launches |
 | wallpaper | apply, backup, restore on exit and on crash recovery (1 monitor) | multi-monitor |
+| icons | `icons_test` on this machine: 191/191 Start apps get an icon via the shell image factory (Chrome, Edge, Steam, Discord, Epic Games Launcher, Calculator [MSIX], Notepad all checked by name); fallback-only run (factory disabled): 91/99 apps that have a file to fall back to | the running-unpinned-Chrome Dock tile in a live session (the "G" tile came from AUMID resolution, fixed in code, not reproduced live); MSIX apps without an exe cannot use the later steps |
 | bench | scripted runs with raw CSVs in `bench/` | clean-boot method; GPU memory; 3-run medians on a second machine |
 | overview, search, files, control, notify, desktops, hotkeys, settings | none | all (modules not built or not yet verified) |
 | compat | none | all |
