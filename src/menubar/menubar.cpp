@@ -224,7 +224,7 @@ void MenuBar::Layout() {
         x -= tw + 14;
     };
     place(L"clock", clockText_);
-    place(L"overflow", L"⋯");
+    place(L"overflow", L"\u22EF");
     for (const auto& s : status_) place(s.id, s.text);
 }
 
