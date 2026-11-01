@@ -301,8 +301,5 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     g_grid = nullptr;
     ui::IconStore::Get().Shutdown();
     DestroyWindow(g_window);
-    log::Info("exit: process ending");
-    // Windows is already restored and the marker is gone. Skip the destructors of the render devices, window
-    // tracker and IPC server (hundreds of ms of D3D/COM teardown that nobody waits on usefully).
-    ExitProcess(0);
+    return 0;
 }
