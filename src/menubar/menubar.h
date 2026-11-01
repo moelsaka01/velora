@@ -7,7 +7,7 @@
 // Tray icons: NOT hosted. On Windows 11 Explorer owns the notification area (XAML) and
 // Velora never replaces Explorer or injects into it (CLAUDE.md sec. 0.8), so there is no
 // supported way to receive Shell_NotifyIcon traffic. See docs/PROGRESS.md (menubar).
-// The "⋯" item opens Windows' own overflow flyout via Win+B, Enter (keyboard input only).
+// The "⋯" item opens ms-settings:taskbar (no keystrokes are injected).
 #pragma once
 
 #include <functional>
