@@ -186,7 +186,7 @@ Machine: the developer laptop on a normal desktop (Claude app, browser, game lib
 - Known limits: windows that float under the Dock are hidden by the shelf instead of blurred (no live backdrop); wallpaper positions other than fill/stretch use fill; the dark material is an estimate; one Dock (primary monitor).
 
 ### Resume note (2026-11-02, session stopped: out of tokens)
-- Done: PR #43 icons (CI green), PR #44 Dock glass + magnification (CI pending when stopped); Inter font + OFL added under assets/fonts (not loaded by code yet).
+- Done: PR #43 icons (CI green), PR #44 Dock glass + magnification (CI green); Inter font + OFL added under assets/fonts (not loaded by code yet).
 - In progress: branch feat/menubar-glass (WIP draft PR, base feat/dock-liquid-glass): only the font files, no menu bar code changed yet.
 - Next 1: menu bar to the spec (height 30, 13 pt, 21.75 gap, translucent, menus 24 pt rows / 201 pt wide) with Inter loaded through an in-memory DirectWrite font collection in ui::Format.
 - Next 2: launcher grid (PR D, 60 pt icons, 115/102 pitch, blur, spring open/close from tokens::timing::kPanelOpen), then the RAM review (grid raised private bytes 103 -> 165-176 MB; Dock strip adds ~1-5 MB).
