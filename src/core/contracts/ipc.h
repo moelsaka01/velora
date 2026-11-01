@@ -40,6 +40,9 @@ inline constexpr char kHeartbeat[]    = "heartbeat";
 inline constexpr char kGetState[]     = "get_state";
 inline constexpr char kEnter[]        = "enter";
 inline constexpr char kExit[]         = "exit";
+// shell -> watchdog, a synchronous request sent before the shell leaves Velora
+// Mode; the watchdog acknowledges and exits without restoring or terminating.
+inline constexpr char kDisarm[]       = "disarm";
 inline constexpr char kRestore[]      = "restore";
 inline constexpr char kOpenApp[]      = "open_app";    // files/settings -> shell
 inline constexpr char kSettingsChanged[] = "settings_changed";
