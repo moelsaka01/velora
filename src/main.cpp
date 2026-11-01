@@ -19,6 +19,7 @@
 #include "core/state_store.h"
 #include "apps/app_index.h"
 #include "apps/apps_grid.h"
+#include "dock/dock.h"
 #include "menubar/menubar.h"
 #include "switch/restore.h"
 #include "switch/switch_manager.h"
@@ -248,8 +249,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     if (!CurrentProfile().IsTest()) apps::AppIndex::Get().StartBackground(g_window, kMsgAppsChanged);
     menubar::MenuBar menuBar(bus, tracker, menuActions);
     manager.SetMenuBarOptions(menuBar.Options());
-    bus.Subscribe(EventType::Entered, [&](const Event&) { menuBar.Attach(manager.MenuBarBar().Hwnd()); });
-    bus.Subscribe(EventType::Exiting, [&](const Event&) { menuBar.Detach(); });
+    dock::Dock::Actions dockActions;
+    dockActions.openApps = menuActions.openApps;
+    dock::Dock dock(bus, tracker, dockActions);
+    manager.SetDockOptions(dock.Options(), dock.ReservedDip());
+    bus.Subscribe(EventType::Entered, [&](const Event&) {
+        menuBar.Attach(manager.MenuBarBar().Hwnd());
+        dock.Attach(&manager.DockBar());
+    });
+    bus.Subscribe(EventType::Exiting, [&](const Event&) {
+        dock.Detach();
+        menuBar.Detach();
+    });
 
     if (!manager.Enter()) {
         log::Error("enter failed; Windows left untouched");

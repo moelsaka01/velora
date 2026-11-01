@@ -7,7 +7,7 @@ Status: not started | in progress | gated | passed | deferred
 | core | passed (G1) | contracts v1 + json, state store, IPC pipe, runtime/profile, log, event bus; core_test passes (PR #9 merged, CI green) |
 | switch | gated | Day-2 safety gate PASS locally (117/117 checks on main 364f267, see "Day 2 review fixes"; original run 55/55); CI result recorded on the PRs |
 | render | passed (base) | tokens + animation engine (animation_test) + RenderHost (render_host_test: D3D11 + composition swap chain + D2D draw/present/resize, DWM Mica/rounded-corner helpers). No consumers yet (dock/menubar are Day 3) |
-| dock | not started | |
+| dock | in progress (G1 built, see Day 3) | pinned + running apps (from windows/), dots, launch/activate/minimize, right-click menu; dock_test (matching, grouping, click decisions, geometry, pinned persistence); live on this machine |
 | menubar | in progress (G1 partial) | Velora menu, active app, battery + clock, light/dark, drawn in the top appbar; menubar_test + live run on this machine. **Tray-icon hosting not built (blocked, see Day 3)** |
 | windows | passed (G1 tracking) | window_tracker_test: lifecycle via WinEvents (create/title/minimize/restore/hide/destroy), tool/owned/never-shown windows excluded, own-process skip, fullscreen rect + elevation helpers, live foreground + fullscreen with VELORA_TEST_FOCUS=1 (run once locally: pass). Cloaked path and a real elevated window are unmeasured |
 | overview | not started | |
@@ -133,3 +133,13 @@ Starting commit: `4d6ac80` (main before Day 3). Compat is a separate session.
 - The shell skips the background scan in the test profile (gate measures switching; the test profile has a private data dir).
 - Memory note: opening the grid raised the shell working set from 57 MB to 146 MB, 126 MB after closing (see the bench section); this is being reduced in the dock PR.
 - Switch gate on the apps build (testing binaries, local): PASS 117/117, full log kept in `build/gate_apps.log`.
+
+### dock (PR feat/dock)
+- Second appbar at the bottom (reserved band = pill height + 8 DIP inset, full monitor width); the window is a centred pill inside the band (`AppBarOptions::placement`), clipped to a rounded region over an Acrylic backdrop. Both appbar HWNDs are recorded in state.json so crash recovery removes both.
+- Items: Apps (opens the grid), Files, Settings (Velora's own exes, generic icon because they carry none yet), File Explorer, Edge when present, then running apps that are not pinned. Pinned list persists in `settings.json` ("dock.pinned", read-modify-write so other sections survive). Running windows come from `WindowTracker`; matching is AUMID first, exe path second; UWP windows are grouped by the AUMID of their frame window.
+- Click: not running -> launch; running -> activate the first visible window (restore if minimized); already foreground with one window -> minimize (posted `SC_MINIMIZE`, a hung app cannot block the Dock); several windows -> cycle. Right click: windows list, Quit (posted WM_CLOSE, polite), Keep in / Remove from Dock. Elevated windows get an orange badge and are not minimized or closed.
+- Entrance and hover fades run on the shared AnimationEngine (16 ms frame timer only while something animates).
+- **Per-monitor:** one `Dock` instance serves one appbar; only the primary monitor is instantiated today. Multi-monitor Docks are one more instance each, not built or tested.
+- Not built: magnification, minimize-into-Dock animation, jump lists, recent folders, drag-reorder, tooltips (G2/G3).
+- Live check (this machine): pill with 7 items, Claude's running dot, rounded blur; clicking not exercised live (minimize/activate would act on the developer's own windows).
+- Fix found on the way (owner A's file): `RenderHost` never called `ID2D1DeviceContext::SetDpi`, so everything drew at 96 dpi on a 150 % screen. Added to `CreateTarget` and `Resize`. The menu bar and grid were affected the same way.
