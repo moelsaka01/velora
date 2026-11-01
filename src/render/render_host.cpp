@@ -111,6 +111,7 @@ bool RenderHost::CreateTarget() {
         static_cast<float>(dpi));
     if (FAILED(context_->CreateBitmapFromDxgiSurface(surface.Get(), &bp, &target_))) return false;
     context_->SetTarget(target_.Get());
+    context_->SetDpi(static_cast<float>(dpi), static_cast<float>(dpi));  // SetTarget does not carry the bitmap DPI over
     return true;
 }
 
@@ -172,6 +173,7 @@ bool RenderHost::Resize(UINT width, UINT height) {
         static_cast<float>(dpi));
     if (FAILED(context_->CreateBitmapFromDxgiSurface(surface.Get(), &bp, &target_))) return false;
     context_->SetTarget(target_.Get());
+    context_->SetDpi(static_cast<float>(dpi), static_cast<float>(dpi));
     return true;
 }
 

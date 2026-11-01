@@ -78,7 +78,7 @@ velora_add_app(velora-shell    src/main.cpp)
 velora_add_app(velora-watchdog watchdog/main.cpp)
 velora_add_app(velora-files    apps/files/main.cpp)
 velora_add_app(velora-settings apps/settings/main.cpp)
-target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps)
+target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps velora_dock)
 target_link_libraries(velora-watchdog PRIVATE velora_switch)
 
 # Test-only builds of the shell and watchdog (VELORA_TESTING compiles the test hooks in:
@@ -91,7 +91,7 @@ foreach(t velora-shell-testing velora-watchdog-testing)
   target_link_libraries(${t} PRIVATE velora_switch)
   target_compile_definitions(${t} PRIVATE VELORA_TESTING)
 endforeach()
-target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui velora_apps)
+target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui velora_apps velora_dock)
 set_target_properties(velora-shell-testing PROPERTIES OUTPUT_NAME velora-shell RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 set_target_properties(velora-watchdog-testing PROPERTIES OUTPUT_NAME velora-watchdog RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 
@@ -152,3 +152,10 @@ target_link_libraries(velora_apps PUBLIC velora_ui velora_core shell32 ole32 pro
 add_executable(apps_test tests/apps_test.cpp)
 target_link_libraries(apps_test PRIVATE velora_apps)
 add_test(NAME apps_test COMMAND apps_test)
+
+# dock/: the Dock pill in the bottom appbar. Owner B.
+add_library(velora_dock STATIC src/dock/dock.cpp src/dock/dock_model.cpp)
+target_link_libraries(velora_dock PUBLIC velora_apps velora_ui velora_switch velora_windows velora_core)
+add_executable(dock_test tests/dock_test.cpp)
+target_link_libraries(dock_test PRIVATE velora_dock)
+add_test(NAME dock_test COMMAND dock_test)
