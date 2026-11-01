@@ -21,8 +21,6 @@ namespace {
 
 constexpr UINT_PTR kTimerClock = 1;
 constexpr UINT_PTR kTimerRedraw = 2;
-constexpr UINT_PTR kTimerOverflowEnter = 3;
-constexpr UINT_PTR kTimerOverflowCheck = 4;
 constexpr float kPad = 12.0f;
 
 enum Cmd : UINT { kAbout = 1, kSettings, kApps, kSleep, kRestart, kShutDown, kExit };
@@ -57,54 +55,15 @@ void DoExitWindows(UINT flags, const char* what) {
         log::Error(std::string("power: ExitWindowsEx failed, error ") + std::to_string(GetLastError()));
 }
 
-// Opens Windows' own notification-overflow flyout the documented way: the Win+B shortcut moves
-// focus to the notification area, Enter then opens the hidden-icons flyout. Keyboard input only;
-// nothing is injected into Explorer.
-//
-// Input safety: every key that goes down is released in the same SendInput batch, the result is
-// checked, and afterwards any key of ours that is still logically down is released explicitly, so a
-// failed or interleaved injection can never leave Win/B/Enter stuck for the rest of the session.
-bool SendKeys(std::initializer_list<std::pair<WORD, bool>> keys) {
-    std::vector<INPUT> in;
-    for (auto [vk, up] : keys) {
-        INPUT i{};
-        i.type = INPUT_KEYBOARD;
-        i.ki.wVk = vk;
-        i.ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
-        in.push_back(i);
-    }
-    UINT sent = SendInput(static_cast<UINT>(in.size()), in.data(), sizeof(INPUT));
-    if (sent != in.size())
-        log::Warn("menubar: SendInput injected " + std::to_string(sent) + " of " + std::to_string(in.size()) +
-                  " events, error " + std::to_string(GetLastError()));
-    return sent == in.size();
-}
-
-// Releases the keys this module injects if the system still reports them as down.
-void ReleaseInjectedKeys() {
-    std::vector<INPUT> in;
-    for (WORD vk : {static_cast<WORD>(VK_LWIN), static_cast<WORD>('B'), static_cast<WORD>(VK_RETURN)}) {
-        if (!(GetAsyncKeyState(vk) & 0x8000)) continue;
-        INPUT i{};
-        i.type = INPUT_KEYBOARD;
-        i.ki.wVk = vk;
-        i.ki.dwFlags = KEYEVENTF_KEYUP;
-        in.push_back(i);
-        log::Warn("menubar: key " + std::to_string(vk) + " still down after injection; releasing it");
-    }
-    if (!in.empty()) SendInput(static_cast<UINT>(in.size()), in.data(), sizeof(INPUT));
-}
-
-// True when keyboard focus sits on the taskbar's notification area (Win+B moved it there). Enter must
-// not be injected anywhere else: it would land in whatever app has focus (a dialog's default button).
-bool ForegroundIsTray() {
-    HWND fg = GetForegroundWindow();
-    if (!fg) return false;
-    wchar_t cls[64] = {};
-    GetClassNameW(fg, cls, static_cast<int>(std::size(cls)));
-    std::wstring c = ui::Lower(cls);
-    return c == L"shell_traywnd" || c == L"shell_secondarytraywnd" ||
-           c == L"toplevelwindowforoverflowxamlisland";
+// The ⋯ item opens Windows' own page for the notification area ("Other system tray icons"). No keystrokes
+// are injected: SendInput looked like malware to antivirus heuristics, and an injected Win/Enter sequence was
+// a suspect for the PrintScreen breakage seen in the first live run (see docs/DECISIONS.md).
+void OpenTaskbarSettings() {
+    auto r = reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", L"ms-settings:taskbar", nullptr, nullptr, SW_SHOWNORMAL));
+    if (r > 32)
+        log::Info("menubar: overflow result=ms-settings (opened ms-settings:taskbar)");
+    else
+        log::Error("menubar: overflow result=failed (ms-settings:taskbar did not open, code " + std::to_string(r) + ")");
 }
 
 bool IsShellClass(HWND h) {
@@ -410,31 +369,6 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
                 result = 0;
                 return true;
             }
-            if (wp == kTimerOverflowEnter) {
-                KillTimer(h, kTimerOverflowEnter);
-                ReleaseInjectedKeys();
-                if (ForegroundIsTray()) {
-                    SendKeys({{VK_RETURN, false}, {VK_RETURN, true}});
-                    ReleaseInjectedKeys();
-                } else {
-                    log::Warn("menubar: Win+B did not move focus to the notification area; not sending Enter");
-                }
-                SetTimer(h, kTimerOverflowCheck, 600, nullptr);
-                result = 0;
-                return true;
-            }
-            if (wp == kTimerOverflowCheck) {
-                KillTimer(h, kTimerOverflowCheck);
-                // Win+B needs a visible taskbar on some builds. If the flyout did not appear, open the page where
-                // the user manages "Other system tray icons" instead.
-                HWND fly = FindWindowW(L"TopLevelWindowForOverflowXamlIsland", nullptr);
-                if (!fly || !IsWindowVisible(fly)) {
-                    log::Warn("menubar: overflow flyout did not appear; opening ms-settings:taskbar");
-                    ShellExecuteW(nullptr, L"open", L"ms-settings:taskbar", nullptr, nullptr, SW_SHOWNORMAL);
-                }
-                result = 0;
-                return true;
-            }
             if (wp == kTimerRedraw) {
                 KillTimer(h, kTimerRedraw);
                 Draw();
@@ -464,10 +398,7 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
             }
             for (const auto& [key, rect] : rightItems_) {
                 if (key.rfind(L"overflow\n", 0) == 0 && inRect(rect, GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) {
-                    log::Info("menubar: opening the Windows notification overflow (Win+B, Enter)");
-                    SendKeys({{VK_LWIN, false}, {'B', false}, {'B', true}, {VK_LWIN, true}});
-                    ReleaseInjectedKeys();
-                    SetTimer(h, kTimerOverflowEnter, 250, nullptr);
+                    OpenTaskbarSettings();
                     result = 0;
                     return true;
                 }
