@@ -3,6 +3,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <wincodec.h>
 
 #include <algorithm>
 #include <condition_variable>
@@ -15,6 +16,7 @@
 
 #include "core/log.h"
 #include "core/text.h"
+#include "ui/resource_ids.h"
 
 #pragma comment(lib, "dwrite.lib")
 #pragma comment(lib, "version.lib")
@@ -299,6 +301,34 @@ bool LoadIconPixels(const std::wstring& source, Pixels* out, std::string* how, b
         if (FromExtractIcon(target, 0, out)) return done("target-exe-icon");
     }
     return false;
+bool LoadVeloraIcon(int px, Pixels* out) {
+    if (px <= 0 || px > 1024) return false;
+    HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_VELORA_ICON), RT_RCDATA);
+    if (!res) return false;
+    HGLOBAL mem = LoadResource(nullptr, res);
+    const void* data = mem ? LockResource(mem) : nullptr;
+    DWORD size = SizeofResource(nullptr, res);
+    if (!data || !size) return false;
+    ComPtr<IWICImagingFactory> wic;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic)))) return false;
+    ComPtr<IWICStream> stream;
+    ComPtr<IWICBitmapDecoder> decoder;
+    ComPtr<IWICBitmapFrameDecode> frame;
+    ComPtr<IWICBitmapScaler> scaler;
+    ComPtr<IWICFormatConverter> conv;
+    if (FAILED(wic->CreateStream(&stream)) || FAILED(stream->InitializeFromMemory(static_cast<BYTE*>(const_cast<void*>(data)), size)) ||
+        FAILED(wic->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder)) ||
+        FAILED(decoder->GetFrame(0, &frame)))
+        return false;
+    // Premultiply at the source size first, then scale: scaling straight alpha bleeds dark edges.
+    if (FAILED(wic->CreateFormatConverter(&conv)) ||
+        FAILED(conv->Initialize(frame.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom)) ||
+        FAILED(wic->CreateBitmapScaler(&scaler)) ||
+        FAILED(scaler->Initialize(conv.Get(), static_cast<UINT>(px), static_cast<UINT>(px), WICBitmapInterpolationModeHighQualityCubic)))
+        return false;
+    out->width = out->height = px;
+    out->bgra.assign(static_cast<size_t>(px) * px * 4, 0);
+    return SUCCEEDED(scaler->CopyPixels(nullptr, static_cast<UINT>(px) * 4, static_cast<UINT>(out->bgra.size()), out->bgra.data()));
 }
 
 struct IconStore::Impl {

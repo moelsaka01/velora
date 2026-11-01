@@ -1,0 +1,5 @@
+// Resources of velora-shell: the Velora app icon (256 px derivative of assets/icon.png, scaled to the
+// Dock's device pixels at run time).
+#include "ui/resource_ids.h"
+
+IDR_VELORA_ICON RCDATA "../assets/icon_256.png"
