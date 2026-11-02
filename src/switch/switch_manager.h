@@ -21,6 +21,8 @@ public:
 
     // Fatal = the watchdog is gone and could not be replaced: the shell must leave
     // Velora Mode rather than run unprotected.
+    // Test hook: runs inside Enter() right after the watchdog said hello (null in production).
+    void SetAfterWatchdogHook(std::function<void()> fn) { afterWatchdogHook_ = std::move(fn); }
     void SetFatalHandler(std::function<void()> fn) { onFatal_ = std::move(fn); }
 
     // UI owner hooks (menu bar / Dock, owner B). Must be set before Enter(). The menu bar
@@ -44,6 +46,7 @@ public:
     json::Value Status() const;
 
 private:
+    std::function<void()> afterWatchdogHook_;
     static constexpr DWORD kDisarmTimeoutMs = 1000;
     static constexpr DWORD kWatchdogExitWaitMs = 2000;
 

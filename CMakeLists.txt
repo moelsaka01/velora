@@ -156,7 +156,7 @@ string(APPEND VELORA_SVG_CPP "}  // namespace velora::ui\n")
 file(WRITE ${CMAKE_BINARY_DIR}/generated/builtin_icons_data.cpp "${VELORA_SVG_CPP}")
 add_library(velora_ui STATIC src/ui/ui_common.cpp src/ui/icon_tile.cpp src/ui/builtin_icons.cpp
             ${CMAKE_BINARY_DIR}/generated/builtin_icons_data.cpp)
-target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32 windowscodecs d3d11 dxgi d2d1 shlwapi)
+target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32 windowscodecs psapi d3d11 dxgi d2d1 shlwapi)
 # The Dock's pure geometry and blur maths (no windows.h), shared with the wallpaper backdrop.
 add_library(velora_dock_layout STATIC src/dock/dock_layout.cpp)
 target_link_libraries(velora_dock_layout PUBLIC velora_tokens)

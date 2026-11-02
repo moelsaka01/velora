@@ -36,6 +36,11 @@ using namespace velora;
 
 constexpr int kHotkeyId = 1;
 constexpr DWORD kStartupGraceMs = 5000;  // shell must say hello within this
+// The shell says hello early in Enter() but sends its first heartbeat only when Enter() returns (taskbar hide, appbars, the
+// Dock's and menu bar's first D3D/D2D/DirectWrite initialisation). On a cold start that can exceed the 2.5 s steady-state
+// timeout, and the watchdog then killed a healthy shell (exit code 1, the switch_gate flake). Until the first heartbeat the
+// shell gets this longer allowance; a shell that dies is still noticed at once through its process handle.
+constexpr DWORD kFirstBeatGraceMs = 10000;
 constexpr DWORD kMaxWaitMs = 250;        // upper bound between wake-ups; deadlines wake us exactly
 
 constexpr int kExitPending = 3;
@@ -185,6 +190,7 @@ int Watch(DWORD shellPid) {
     bool hotkeyOk = false;  // emergency hotkey registered (set before the first message is pumped)
     ULONGLONG lastBeat = GetTickCount64();
     const ULONGLONG started = lastBeat;
+    bool beaten = false;  // first heartbeat seen since arming
 
     if (!server.Start(WatchdogPipeName(), [&](std::string_view raw) -> std::string {
             auto m = json::Parse(raw);
@@ -198,7 +204,10 @@ int Watch(DWORD shellPid) {
                 return ipc::MakeMessage("response", type.c_str(), id, p, status, error);
             };
             if (type == ipc::msg::kHeartbeat) {
-                if (armed) lastBeat = GetTickCount64();
+                if (armed) {
+                    lastBeat = GetTickCount64();
+                    beaten = true;
+                }
                 return {};
             }
             if (type == ipc::msg::kExit) {  // legacy goodbye event: same meaning as disarm
@@ -218,6 +227,7 @@ int Watch(DWORD shellPid) {
                 if (PayloadPid(*m) != static_cast<std::int64_t>(shellPid)) return reply(400, "hello pid does not match the watched shell");
                 if (TestRejectsHello()) return reply(500, "hello rejected by test hook");
                 armed = true;
+                beaten = false;
                 lastBeat = GetTickCount64();
                 json::Value p;
                 p.Set("pid", static_cast<std::int64_t>(GetCurrentProcessId()));
@@ -254,7 +264,8 @@ int Watch(DWORD shellPid) {
         std::vector<HANDLE> handles = server.WaitHandles();
         handles.push_back(shell);
         // Sleep until the nearest deadline (heartbeat timeout / startup grace), not on a fixed tick.
-        ULONGLONG due = armed ? lastBeat + ipc::kHeartbeatTimeoutMs : started + kStartupGraceMs;
+        const ULONGLONG beatTimeout = beaten ? ipc::kHeartbeatTimeoutMs : kFirstBeatGraceMs;
+        ULONGLONG due = armed ? lastBeat + beatTimeout : started + kStartupGraceMs;
         ULONGLONG nowTick = GetTickCount64();
         DWORD wait = due > nowTick ? static_cast<DWORD>(std::min<ULONGLONG>(due - nowTick, kMaxWaitMs)) : 0;
         DWORD r = MsgWaitForMultipleObjectsEx(static_cast<DWORD>(handles.size()), handles.data(), wait, QS_ALLINPUT,
@@ -290,7 +301,7 @@ int Watch(DWORD shellPid) {
             break;
         }
         ULONGLONG now = GetTickCount64();
-        if (armed && now - lastBeat >= ipc::kHeartbeatTimeoutMs) {
+        if (armed && now - lastBeat >= (beaten ? ipc::kHeartbeatTimeoutMs : kFirstBeatGraceMs)) {
             if (shouldRecover()) {
                 log::Error("shell heartbeat timed out (" + std::to_string(now - lastBeat) + " ms); restoring");
                 exitCode = Restore("shell hung", true);

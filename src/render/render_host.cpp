@@ -152,6 +152,12 @@ void RenderHost::Shutdown() {
     drawing_ = false;
 }
 
+void RenderHost::Trim() {
+    if (d2dDevice_) d2dDevice_->ClearResources(0);
+    ComPtr<IDXGIDevice3> d3;
+    if (dxgi_ && SUCCEEDED(dxgi_.As(&d3))) d3->Trim();
+}
+
 bool RenderHost::Resize(UINT width, UINT height) {
     if (!swapChain_ || width == 0 || height == 0) return false;
     if (width == width_ && height == height_) return true;

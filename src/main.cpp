@@ -38,12 +38,16 @@ using namespace velora;
 constexpr UINT_PTR kTimerTick = 1;          // heartbeat + reconcile, 1 Hz
 constexpr UINT_PTR kTimerRehideEarly = 2;   // after TaskbarCreated
 constexpr UINT_PTR kTimerRehideLate = 3;
+constexpr UINT_PTR kTimerTrim = 5;  // memory give-back, a moment after the Apps panel closed
 constexpr UINT_PTR kTimerTaskbarTrailing = 4;  // trailing run of a TaskbarCreated burst
 
 UINT g_taskbarCreated = 0;
 sw::SwitchManager* g_manager = nullptr;
 HWND g_window = nullptr;
 apps::AppsGrid* g_grid = nullptr;
+dock::Dock* g_dock = nullptr;
+menubar::MenuBar* g_menuBar = nullptr;
+constexpr UINT kMsgTrim = WM_APP + 43;  // the Apps panel closed: schedule the memory give-back
 constexpr UINT kMsgAppsChanged = WM_APP + 42;  // the app index was refreshed on its worker thread
 BurstDebounce g_taskbarDebounce(500);  // Explorer may broadcast TaskbarCreated several times in a burst
 
@@ -122,12 +126,27 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         if (g_grid) g_grid->OnDataChanged();
         return 0;
     }
+    if (msg == kMsgTrim) {
+        SetTimer(h, kTimerTrim, 1500, nullptr);  // after the close settled; a reopen in between restarts the wait
+        return 0;
+    }
     if (msg == ui::kMsgIconsLoaded) {
         ui::IconStore::Get().Dispatch();
         return 0;
     }
     switch (msg) {
         case WM_TIMER:
+            if (wp == kTimerTrim) {
+                KillTimer(h, wp);
+                if (g_grid && g_grid->Visible()) return 0;  // reopened meanwhile; the next close schedules again
+                // Keep only what the Dock draws; the launcher's icons are decoded again on the next open.
+                const size_t freed = g_dock ? ui::IconStore::Get().Trim(g_dock->IconSources()) : 0;
+                if (g_dock) g_dock->Trim();
+                if (g_menuBar) g_menuBar->Trim();
+                log::Info("icon cache trimmed: " + std::to_string(freed >> 10) + " KB of decoded pixels released");
+                ui::TrimProcessMemory("apps panel closed");
+                return 0;
+            }
             if (wp == kTimerTaskbarTrailing) {
                 KillTimer(h, wp);
                 if (g_taskbarDebounce.OnTimer(GetTickCount64())) HandleTaskbarCreated(h);
@@ -283,14 +302,23 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     sw::SwitchManager manager(bus, instance);
     manager.SetFatalHandler([] { PostMessageW(g_window, WM_CLOSE, 0, 0); });
     g_manager = &manager;
+#ifdef VELORA_TESTING
+    if (CurrentProfile().IsTest()) {
+        // A slow Enter between the watchdog's hello and the first heartbeat (cold-start stand-in), see switch_gate.
+        wchar_t v[16] = {};
+        if (GetEnvironmentVariableW(L"VELORA_TEST_ENTER_DELAY_MS", v, 16))
+            manager.SetAfterWatchdogHook([ms = static_cast<DWORD>(_wtoi(v))] { Sleep(ms); });
+    }
+#endif
     ui::IconStore::Get().SetNotifyWindow(g_window);
 
     win::WindowTracker tracker(bus);
     menubar::MenuBar::Actions menuActions;
     menuActions.exitVelora = [] { PostMessageW(g_window, WM_CLOSE, 0, 0); };
     menuActions.openSettings = [] {
-        auto exe = ExeDir() / L"velora-settings.exe";
-        ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        // velora-settings.exe is a stub until Settings reaches G1 (docs/PROGRESS.md): open Windows Settings meanwhile.
+        // Switch back to ExeDir() / L"velora-settings.exe" when the app ships.
+        ShellExecuteW(nullptr, L"open", L"ms-settings:", nullptr, nullptr, SW_SHOWNORMAL);
     };
     apps::AppsGrid grid(instance);
     g_grid = &grid;
@@ -304,6 +332,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     dock::Dock::Actions dockActions;
     dockActions.openApps = menuActions.openApps;
     dock::Dock dock(bus, tracker, dockActions);
+    g_dock = &dock;
+    g_menuBar = &menuBar;
+    grid.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
     manager.SetDockOptions(dock.Options(), dock.ReservedDip());
     bus.Subscribe(EventType::Entered, [&](const Event&) {
         menuBar.Attach(manager.MenuBarBar().Hwnd());
@@ -348,6 +379,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     tracker.Stop();
     manager.Exit();
     g_manager = nullptr;
+    g_dock = nullptr;
+    g_menuBar = nullptr;
     grid.Hide();
     g_grid = nullptr;
     ui::IconStore::Get().Shutdown();

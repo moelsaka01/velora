@@ -153,6 +153,9 @@ void AppsGrid::Hide() {
     DestroyWindow(h);
     apps_.clear();
     shown_.clear();
+    apps_.shrink_to_fit();
+    shown_.shrink_to_fit();
+    if (onHidden_) onHidden_();
 }
 
 void AppsGrid::OnDataChanged() {
