@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include "core/log.h"
+#include "ui/backdrop.h"
 #include "ui/ui_common.h"
 
 namespace velora::menubar {
@@ -71,9 +72,12 @@ bool MenuPopup::Open(HWND owner, int x, int y, std::vector<MenuItem> items, std:
         return false;
     }
     const tokens::Theme theme = ui::SystemTheme();
-    if (!(ui::TransparencyEnabled() && render::ApplyBackdrop(hwnd_, render::Backdrop::Acrylic, theme)))
-        render::ApplyBackdrop(hwnd_, render::Backdrop::None, theme);
-    render::ApplyRoundedCorners(hwnd_, true);
+    // Glass drawn like the Dock's shelf: blurred wallpaper + neutral veil + rim, clipped to our own rounded rectangle
+    // (the window is per-pixel transparent), so the corner radius is the spec's and not the 8 px system one.
+    translucent_ = ui::TransparencyEnabled() && host_.EffectsEnabled();
+    wall_.Reset();
+    render::ApplyBackdrop(hwnd_, render::Backdrop::None, theme);
+    render::ApplyRoundedCorners(hwnd_, false);
     ShowWindow(hwnd_, SW_SHOWNOACTIVATE);
     SetForegroundWindow(hwnd_);
     Draw();
@@ -111,7 +115,39 @@ void MenuPopup::Draw() {
     const float w = static_cast<float>(host_.Width()) / s, h = static_cast<float>(host_.Height()) / s;
     ComPtr<ID2D1SolidColorBrush> brush;
     dc->CreateSolidColorBrush(ui::Rgba({theme == tokens::Theme::Dark ? tm::kPopupFillDark : tm::kPopupFillLight}), &brush);
-    dc->FillRectangle(D2D1::RectF(0, 0, w, h), brush.Get());
+    const D2D1_ROUNDED_RECT body = D2D1::RoundedRect(D2D1::RectF(0, 0, w, h), tm::kPopupRadius, tm::kPopupRadius);
+    if (translucent_) {
+        if (!wall_) {
+            RECT win{};
+            MONITORINFO mi{sizeof mi};
+            ui::Pixels px;
+            if (GetWindowRect(hwnd_, &win) && GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi) &&
+                ui::BlurredWallpaper(mi.rcMonitor, win, 1, tokens::dock::kBlurSigma, dpi_, &px))
+                wall_ = ui::MakeBitmap(dc, px);
+        }
+        bool blurred = false;
+        if (wall_) {
+            ComPtr<ID2D1BitmapBrush> bb;
+            if (SUCCEEDED(dc->CreateBitmapBrush(wall_.Get(), &bb))) {
+                float bx = 96, by = 96;
+                wall_->GetDpi(&bx, &by);
+                bb->SetTransform(D2D1::Matrix3x2F::Scale(bx / static_cast<float>(dpi_), by / static_cast<float>(dpi_)));
+                dc->FillRoundedRectangle(body, bb.Get());
+                blurred = true;
+            }
+        }
+        // Menu fill over the blur (the spec's ~77 % white-ish / dark estimate); stronger when there is nothing to blur.
+        if (!blurred) brush->SetColor(ui::Rgba(p.surfaceStrong));  // no wallpaper image: opaque instead of a see-through veil
+        dc->FillRoundedRectangle(body, brush.Get());
+        // Light rim, as on the Dock shelf.
+        const tokens::Glass& glass = tokens::GlassFor(theme);
+        brush->SetColor(ui::Rgba(glass.rimTop));
+        dc->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(0.5f, 0.5f, w - 0.5f, h - 0.5f), tm::kPopupRadius, tm::kPopupRadius),
+                                 brush.Get(), 1.0f);
+    } else {
+        brush->SetColor(ui::Rgba(p.surfaceStrong));  // transparency effects off / gaming mode: opaque
+        dc->FillRoundedRectangle(body, brush.Get());
+    }
 
     IDWriteTextFormat* fmt = ui::Format(tm::kFontSize);
     for (size_t i = 0; i < items_.size(); ++i) {
