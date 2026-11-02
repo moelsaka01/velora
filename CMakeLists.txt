@@ -163,7 +163,7 @@ add_test(NAME font_test COMMAND font_test)
 
 # menubar/: global menu bar drawn into the top appbar. Owner B.
 add_library(velora_menubar STATIC src/menubar/menubar.cpp src/menubar/menu_layout.cpp src/menubar/menu_popup.cpp)
-target_link_libraries(velora_menubar PUBLIC velora_ui velora_switch velora_windows velora_version powrprof)
+target_link_libraries(velora_menubar PUBLIC velora_ui velora_backdrop velora_switch velora_windows velora_version powrprof)
 add_executable(menubar_test tests/menubar_test.cpp)
 target_link_libraries(menubar_test PRIVATE velora_menubar)
 add_test(NAME menubar_test COMMAND menubar_test)
