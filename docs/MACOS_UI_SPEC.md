@@ -108,7 +108,7 @@ Unit: logical pt at 1x. Image = file in `C:\velora-ref`. Confidence: high (clean
 | Spotlight results material | about 61 % veil, rgb(85,71,59) (residual 18) | Spotlight | regression | low |
 | Apps panel | 843 pt wide, top aligned with the Spotlight results panel (y 469 px), radius about 45 pt or more | Apps | x 565..2251 | medium / low |
 | Apps icon / pitch | 60 pt icon, 115 pt column pitch, 102 pt row pitch (a section divider adds extra above the second row) | Apps | display coordinates x 1.408 | low |
-| Apps panel material | about 70 % veil, rgb(103,87,74) (residual 15) | Apps | regression | low |
+| Apps panel material | about 70 % veil; the fitted rgb(103,87,74) was the screenshot wallpaper showing through, so Velora uses neutral rgb(90,90,92) | Apps | regression | low |
 
 ### Materials summary for tokens
 
