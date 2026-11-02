@@ -47,6 +47,8 @@ public:
     // leaves the host unusable and logged; callers degrade to plain GDI/opaque painting.
     bool Initialize(HWND hwnd, bool allowSoftwareFallback = true);
     void Shutdown();
+    // Returns idle GPU/driver memory to the system (DXGI Trim + D2D ClearResources). Safe between frames.
+    void Trim();
 
     bool Resize(UINT width, UINT height);
 

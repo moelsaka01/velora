@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -94,6 +95,9 @@ public:
     void Dispatch();
     int AddListener(std::function<void()> fn);
     void RemoveListener(int token);
+    // Drops the decoded pixels (and request/failure records) of every source not in `keep`; they are decoded again on the
+    // next Request. Returns the pixel bytes released. Main thread.
+    size_t Trim(const std::set<std::wstring>& keep);
     void Shutdown();
 
 private:
@@ -102,6 +106,10 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+// Memory give-back after a big transient surface (the Apps panel) closed: compacts the heaps and trims the working set.
+// Logs private bytes / working set before and after so the effect is visible in the log.
+void TrimProcessMemory(const char* reason);
 
 // Turns loaded pixels into a bitmap on `dc`; null on failure.
 Microsoft::WRL::ComPtr<ID2D1Bitmap> MakeBitmap(ID2D1DeviceContext* dc, const Pixels& p);

@@ -15,6 +15,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <set>
 #include <vector>
 
 #include "core/event_bus.h"
@@ -49,6 +50,9 @@ public:
     void SetAnimationsEnabled(bool on) { anim_.SetEnabled(on); }
 
     const std::vector<DockItem>& Items() const { return items_; }
+    // Icon sources the Dock itself draws (IconStore::Trim keeps these).
+    std::set<std::wstring> IconSources() const;
+    void Trim() { host_.Trim(); }
 
 private:
     bool OnMessage(HWND, UINT, WPARAM, LPARAM, LRESULT&);

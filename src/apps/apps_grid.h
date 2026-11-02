@@ -6,6 +6,7 @@
 
 #include <map>
 #include <string>
+#include <functional>
 #include <vector>
 
 #include "apps/app_index.h"
@@ -38,12 +39,16 @@ public:
     void Toggle();
     void Show();
     void Hide();            // immediately
-    void Close();           // with the closing spring (immediately when animations are off)    bool Visible() const { return hwnd_ != nullptr; }
+    void Close();           // with the closing spring (immediately when animations are off)
+    bool Visible() const { return hwnd_ != nullptr; }
     // The index changed or icons arrived.
     void OnDataChanged();
     void SetAnimationsEnabled(bool on) { anim_.SetEnabled(on); }
+    // Runs after the panel is gone and its bitmaps/window are released (the shell trims memory then).
+    void SetOnHidden(std::function<void()> fn) { onHidden_ = std::move(fn); }
 
 private:
+    std::function<void()> onHidden_;
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT OnMessage(UINT, WPARAM, LPARAM);
     void Refilter();
