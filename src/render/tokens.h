@@ -80,8 +80,8 @@ inline constexpr float kRowPitch   = 102.0f;
 inline constexpr float kRadius     = 45.0f;    // "about 45 pt or more"; clamped to half the panel's short side
 inline constexpr float kInset      = 16.0f;    // panel edge to the first column (working value)
 inline constexpr float kBlurSigma  = 20.0f;    // DIPs (working value)
-inline constexpr std::uint32_t kVeil = 0xB367574A;  // rgb(103,87,74) at 70 %: dark-tinted glass, light and dark mode alike
-inline constexpr std::uint32_t kVeilUnblurred = 0xE0443A32;  // no wallpaper image to blur, or no transparency
+inline constexpr std::uint32_t kVeil = 0xB35A5A5C;  // rgb(90,90,92) at 70 %: neutral dark frosted glass, light and dark mode alike (was a warm brown fitted to one wallpaper)
+inline constexpr std::uint32_t kVeilUnblurred = 0xE03A3A3C;  // no wallpaper image to blur, or no transparency
 inline constexpr float kOpenFrom   = 0.94f;    // scale at the start of the open spring (working value)
 }  // namespace appspanel
 
