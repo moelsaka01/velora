@@ -354,10 +354,12 @@ struct Session {
     Proc shell;
     DWORD watchdogPid = 0;
     double enterMs = -1;
+    bool alive = false;       // set by StartShell, for diagnostics only
+    DWORD exitCode = 0;
 };
 
 // Starts velora-shell and waits until it reports "entered".
-Session StartShell() {
+Session StartShell(DWORD timeoutMs = 10000) {
     Session s;
     double t0 = NowMs();
     s.shell = Spawn(g_shellExe, L"");
@@ -368,8 +370,10 @@ Session StartShell() {
             auto st = ShellState(500);
             return st && st->Find("entered") && st->Find("entered")->AsBool();
         },
-        10000, t0);
+        static_cast<double>(timeoutMs), t0);
     auto st = ShellState(500);
+    s.alive = s.shell.Alive();
+    if (!s.alive) s.exitCode = s.shell.ExitCode();
     if (s.shell.Alive() && st && st->Find("entered") && st->Find("entered")->AsBool()) {
         s.enterMs = NowMs() - t0;
         s.watchdogPid = static_cast<DWORD>(st->Find("watchdogPid")->AsInt());
@@ -381,7 +385,12 @@ bool WaitExit(HANDLE h, DWORD ms) { return h && WaitForSingleObject(h, ms) == WA
 
 void KillStragglers() {
     for (HANDLE h : g_spawned)
-        if (WaitForSingleObject(h, 0) == WAIT_TIMEOUT) TerminateProcess(h, 98);  // only processes this test spawned
+        if (WaitForSingleObject(h, 0) == WAIT_TIMEOUT) {
+            TerminateProcess(h, 98);  // only processes this test spawned
+            // TerminateProcess is asynchronous: until the process object signals, its pipe instance and
+            // single-instance mutex still exist and a shell started next would refuse to run ("already running").
+            WaitForSingleObject(h, 5000);
+        }
     for (HANDLE h : g_spawned) CloseHandle(h);
     g_spawned.clear();
 }
@@ -585,6 +594,15 @@ void LeaveCrashDebris(DWORD pid, std::uint64_t startTime) {
     CreateDirtyMarker(DirtyMarkerPath());
 }
 
+// Last n lines of the shell log, for failure diagnostics.
+std::string LogTail(size_t n) {
+    std::string log = ReadFileText(g_dataDir / "logs" / "velora-shell.log");
+    size_t pos = log.size();
+    for (size_t i = 0; i <= n && pos != std::string::npos && pos > 0; ++i) pos = log.rfind('
+', pos - 1);
+    return pos == std::string::npos ? log : log.substr(pos + 1);
+}
+
 void PhaseDirtyMarker() {
     g_phase = "dirty-marker";
 
@@ -603,8 +621,12 @@ void PhaseDirtyMarker() {
     std::filesystem::remove(g_dataDir / "logs" / "velora-shell.log");
     g_fx.HideTrays();
     LeaveCrashDebris(0, 0);
-    Session s = StartShell();
-    EXPECT(s.enterMs >= 0, "shell entered after recovery");
+    // Generous timeout: this is the first full shell start of the run (cold font/DWM/Defender caches on a
+    // fresh CI VM), and the phase is about recovery order, not enter latency (the cycles phase measures that).
+    Session s = StartShell(30000);
+    EXPECT(s.enterMs >= 0, "shell entered after recovery; " + (s.alive ? std::string("still running") : "exited " + std::to_string(s.exitCode)) +
+                               "; log tail:
+" + LogTail(12));
     RunToEnd(g_shellExe, L"--exit");
     WaitExit(s.shell.h, 5000);
     std::string log = ReadFileText(g_dataDir / "logs" / "velora-shell.log");
@@ -632,6 +654,25 @@ void PhaseDirtyMarker() {
     }
     rc = RunToEnd(g_watchdogExe, L"--login-check");
     EXPECT(TraysAll(true) && !DirtyMarkerExists(DirtyMarkerPath()), "corrupt state handled; rc " + std::to_string(rc));
+}
+
+// A second velora-shell must exit at once, log why, and leave the first one untouched.
+void PhaseSingleInstance() {
+    g_phase = "single-instance";
+    ResetWorld();
+    Session s = StartShell();
+    EXPECT(s.enterMs >= 0, "first shell entered");
+    Proc second = Spawn(g_shellExe, L"");
+    EXPECT(WaitExit(second.h, 3000), "second instance exits within 3 s");
+    EXPECT(second.h && second.ExitCode() == 0, "second instance exit code 0");
+    EXPECT(s.shell.Alive(), "first shell still running");
+    auto st = ShellState(1000);
+    EXPECT(st && st->Find("entered") && st->Find("entered")->AsBool(), "first shell still entered");
+    EXPECT(ReadFileText(g_dataDir / "logs" / "velora-shell.log").find("second velora-shell instance refused") != std::string::npos,
+           "refusal logged");
+    RunToEnd(g_shellExe, L"--exit");
+    WaitExit(s.shell.h, 5000);
+    EXPECT(TraysAll(true));
 }
 
 void PhaseRestoreCli() {
@@ -1106,6 +1147,7 @@ int wmain(int argc, wchar_t** argv) {
 
     struct { const char* name; void (*fn)(); } phases[] = {
         {"dirty marker", PhaseDirtyMarker},      {"--restore CLI", PhaseRestoreCli},
+        {"single instance", PhaseSingleInstance},
         {"emergency hotkey", PhaseEmergencyHotkey}, {"watchdog death", PhaseWatchdogDeath},
         {"hotkey unavailable", PhaseHotkeyUnavailable}, {"window-loss attribution", PhaseAttribution},
         {"watchdog lifecycle", PhaseWatchdogLifecycle}, {"restore correctness", PhaseRestoreCorrectness},
