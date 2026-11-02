@@ -184,3 +184,10 @@ Machine: the developer laptop on a normal desktop (Claude app, browser, game lib
 - New pure module `dock/dock_layout` (geometry, falloff, scales, growth, wallpaper source rect, box blur): 100 % covered by `dock_test` including symmetry, monotonic sweep (peak icon moves with the pointer), energy conservation of the blur.
 - **Not verified on screen** (the shell was not launched; McAfee): the look of the material over a real wallpaper, the magnification feel, the region switching (hover enter/leave), the shelf at 125 to 200 % scaling, per-frame cost. Backdrop build time is logged (`dock: backdrop WxH px from the wallpaper, N ms`).
 - Known limits: windows that float under the Dock are hidden by the shelf instead of blurred (no live backdrop); wallpaper positions other than fill/stretch use fill; the dark material is an estimate; one Dock (primary monitor).
+
+### Resume note (2026-11-02, session stopped: out of tokens)
+- Done: PR #43 icons (CI green), PR #44 Dock glass + magnification (CI green); Inter font + OFL added under assets/fonts (not loaded by code yet).
+- In progress: branch feat/menubar-glass (WIP draft PR, base feat/dock-liquid-glass): only the font files, no menu bar code changed yet.
+- Next 1: menu bar to the spec (height 30, 13 pt, 21.75 gap, translucent, menus 24 pt rows / 201 pt wide) with Inter loaded through an in-memory DirectWrite font collection in ui::Format.
+- Next 2: launcher grid (PR D, 60 pt icons, 115/102 pitch, blur, spring open/close from tokens::timing::kPanelOpen), then the RAM review (grid raised private bytes 103 -> 165-176 MB; Dock strip adds ~1-5 MB).
+- Then: all CI green, guided visual check (McAfee off, non-elevated PowerShell); the shell was never launched in this session.

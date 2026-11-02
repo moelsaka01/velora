@@ -31,7 +31,9 @@ inline float Scale(UINT dpi) { return static_cast<float>(dpi) / 96.0f; }
 D2D1_COLOR_F Rgba(tokens::Color c, float alphaMul = 1.0f);
 
 IDWriteFactory* DWrite();
-// Cached text format (Segoe UI Variable, falls back to Segoe UI), sizes in DIPs.
+// Family name of the bundled UI font (Inter), loaded from the executable's resources; empty when it is not available.
+const std::wstring& BundledFontFamily();
+// Cached text format (the bundled Inter; falls back to Segoe UI Variable / Segoe UI), sizes in DIPs.
 IDWriteTextFormat* Format(float sizeDip, DWRITE_FONT_WEIGHT weight = DWRITE_FONT_WEIGHT_NORMAL);
 float MeasureWidth(const std::wstring& text, IDWriteTextFormat* fmt);
 // Single-line label inside `rect` (DIPs), vertically centred, trimmed with an ellipsis.

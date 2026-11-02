@@ -9,6 +9,9 @@ static_assert(timing::kDockMagnify.stiffness > 240.0f && timing::kDockMagnify.st
 static_assert(timing::kDockMagnify.damping < 4 * 3.1415927f / 0.4f);  // under critical damping: a little bounce
 static_assert(timing::kPanelOpen.damping * timing::kPanelOpen.damping > 3.99f * timing::kPanelOpen.stiffness &&
               timing::kPanelOpen.damping * timing::kPanelOpen.damping < 4.01f * timing::kPanelOpen.stiffness);  // bounce 0: critically damped
+static_assert(size::kMenuBarHeight == 30.0f);
+static_assert(menu::kRowHeight + menu::kSeparatorHeight == 35.0f);  // measured group pitch
+static_assert(menu::kRowHeight == 24.0f && menu::kPopupWidth == 201.5f && menu::kTitleGap == 21.75f);
 static_assert(radius::kSmall < radius::kMedium && radius::kMedium < radius::kLarge);
 static_assert(timing::kFast < timing::kNormal && timing::kNormal < timing::kSlow);
 static_assert(PaletteFor(Theme::Dark).text.argb != PaletteFor(Theme::Light).text.argb);

@@ -21,7 +21,8 @@ namespace {
 
 constexpr UINT_PTR kTimerClock = 1;
 constexpr UINT_PTR kTimerRedraw = 2;
-constexpr float kPad = 12.0f;
+constexpr float kPad = 14.0f;
+namespace tm = velora::tokens::menu;
 
 enum Cmd : UINT { kAbout = 1, kSettings, kApps, kSleep, kRestart, kShutDown, kExit };
 
@@ -91,7 +92,7 @@ std::wstring AppDisplayName(const std::wstring& exePath, const std::wstring& fil
 }
 
 MenuBar::MenuBar(EventBus& bus, win::WindowTracker& tracker, Actions actions)
-    : bus_(bus), tracker_(tracker), actions_(std::move(actions)) {
+    : bus_(bus), tracker_(tracker), actions_(std::move(actions)), popup_(GetModuleHandleW(nullptr)) {
     for (EventType t : {EventType::WindowActivated, EventType::WindowTitleChanged, EventType::WindowDestroyed})
         tokens_.push_back(bus_.Subscribe(t, [this](const Event&) { OnWindowEvent(); }));
 }
@@ -126,8 +127,10 @@ void MenuBar::Attach(HWND hwnd) {
 
 void MenuBar::Detach() {
     if (!hwnd_) return;
+    popup_.Close();
     KillTimer(hwnd_, kTimerClock);
     KillTimer(hwnd_, kTimerRedraw);
+    dirty_ = false;  // the popup's close callback may have asked for a redraw whose timer is now gone
     host_.Shutdown();
     hwnd_ = nullptr;
 }
@@ -202,22 +205,26 @@ void MenuBar::Invalidate() {
 }
 
 void MenuBar::Layout() {
-    float h = tokens::size::kMenuBarHeight;
-    logoRect_ = D2D1::RectF(6, 3, 6 + 28, h - 3);
+    const float h = tokens::size::kMenuBarHeight;
+    const float capTop = (h - tm::kCapsuleHeight) / 2;
+    // The logo is the only title with a menu today; its capsule is as wide as a 16 pt disc plus 9 pt each side.
+    logoRect_ = D2D1::RectF(10, capTop, 10 + 34, capTop + tm::kCapsuleHeight);
     std::wstring name = appName_.empty() ? L"Desktop" : appName_;
-    float w = ui::MeasureWidth(name, ui::Format(13, DWRITE_FONT_WEIGHT_SEMI_BOLD)) + 16;
-    appRect_ = D2D1::RectF(logoRect_.right + 2, 3, logoRect_.right + 2 + std::min(w, 360.0f), h - 3);
+    float w = ui::MeasureWidth(name, ui::Format(tm::kFontSize, DWRITE_FONT_WEIGHT_SEMI_BOLD)) + 4;
+    // Title text to title text is 21.75 pt: measured from the disc's right edge (the capsule has 9 pt of padding).
+    const float nameLeft = logoRect_.right - 9 + tm::kTitleGap;
+    appRect_ = D2D1::RectF(nameLeft, 0, nameLeft + std::min(w, 360.0f), h);
 
-    // Right side, from the edge inwards: clock, then status items.
+    // Right side, from the edge inwards: clock, then status items, 21.75 pt apart.
     rightItems_.clear();
     float width = static_cast<float>(host_.Width()) / ui::Scale(dpi_);
     float x = width - kPad;
-    IDWriteTextFormat* fmt = ui::Format(13);
+    IDWriteTextFormat* fmt = ui::Format(tm::kFontSize);
     auto place = [&](const std::wstring& id, const std::wstring& text) {
         if (text.empty()) return;
-        float tw = ui::MeasureWidth(text, fmt) + 4;
+        float tw = ui::MeasureWidth(text, fmt) + 2;
         rightItems_.emplace_back(id + L"\n" + text, D2D1::RectF(x - tw, 0, x, h));
-        x -= tw + 14;
+        x -= tw + tm::kTitleGap;
     };
     place(L"clock", clockText_);
     place(L"overflow", L"\u22EF");
@@ -238,15 +245,16 @@ void MenuBar::Draw() {
     float w = static_cast<float>(host_.Width()) / ui::Scale(dpi_);
     float h = tokens::size::kMenuBarHeight;
 
+    // The spec's bar has no chrome at all (no veil, no edge). Over an arbitrary wallpaper that is not readable, so the bar
+    // keeps a light veil over the DWM backdrop and no bottom hairline.
     ComPtr<ID2D1SolidColorBrush> brush;
-    dc->CreateSolidColorBrush(ui::Rgba(backdrop_ ? p.surface : p.surfaceStrong), &brush);
+    const std::uint32_t veil = theme_ == tokens::Theme::Dark ? tm::kBarVeilDark : tm::kBarVeilLight;
+    dc->CreateSolidColorBrush(ui::Rgba(backdrop_ ? tokens::Color{veil} : p.surfaceStrong), &brush);
     dc->FillRectangle(D2D1::RectF(0, 0, w, h), brush.Get());
-    brush->SetColor(ui::Rgba(p.separator));
-    dc->FillRectangle(D2D1::RectF(0, h - 1, w, h), brush.Get());
 
-    if (hoverLogo_ || menuOpen_) {
-        brush->SetColor(ui::Rgba(p.separator));
-        dc->FillRoundedRectangle(D2D1::RoundedRect(logoRect_, tokens::radius::kSmall, tokens::radius::kSmall), brush.Get());
+    if (hoverLogo_ || menuOpen_) {  // selected-title capsule: fully rounded
+        brush->SetColor(ui::Rgba(p.separator, menuOpen_ ? 1.6f : 1.0f));
+        dc->FillRoundedRectangle(D2D1::RoundedRect(logoRect_, tm::kCapsuleHeight / 2, tm::kCapsuleHeight / 2), brush.Get());
     }
     // Logo: original mark (accent disc with a "V"), not an OS glyph.
     brush->SetColor(ui::Rgba(p.accent));
@@ -257,11 +265,10 @@ void MenuBar::Draw() {
                   DWRITE_TEXT_ALIGNMENT_CENTER);
 
     brush->SetColor(ui::Rgba(p.text));
-    ui::DrawLabel(dc, brush.Get(), appName_, D2D1::RectF(appRect_.left + 8, 0, appRect_.right, h),
-                  ui::Format(13, DWRITE_FONT_WEIGHT_SEMI_BOLD));
+    ui::DrawLabel(dc, brush.Get(), appName_, appRect_, ui::Format(tm::kFontSize, DWRITE_FONT_WEIGHT_SEMI_BOLD));
     for (const auto& [key, rect] : rightItems_) {
         std::wstring text = key.substr(key.find(L'\n') + 1);
-        ui::DrawLabel(dc, brush.Get(), text, rect, ui::Format(13), DWRITE_TEXT_ALIGNMENT_TRAILING);
+        ui::DrawLabel(dc, brush.Get(), text, rect, ui::Format(tm::kFontSize), DWRITE_TEXT_ALIGNMENT_TRAILING);
     }
     if (!host_.EndDraw()) {
         log::Warn("menubar: present failed; recreating the render target");
@@ -271,32 +278,34 @@ void MenuBar::Draw() {
 }
 
 void MenuBar::ShowVeloraMenu() {
-    HMENU menu = CreatePopupMenu();
-    if (!menu) return;
-    AppendMenuW(menu, MF_STRING, kAbout, L"About Velora");
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, kSettings, L"Settings\u2026");
-    AppendMenuW(menu, MF_STRING, kApps, L"Apps");
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, kSleep, L"Sleep");
-    AppendMenuW(menu, MF_STRING, kRestart, L"Restart\u2026");
-    AppendMenuW(menu, MF_STRING, kShutDown, L"Shut Down\u2026");
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, kExit, L"Exit Velora");
-
+    std::vector<MenuItem> items = {
+        {kAbout, L"About Velora"}, Separator(),
+        {kSettings, L"Settings\u2026"}, {kApps, L"Apps"}, Separator(),
+        {kSleep, L"Sleep"}, {kRestart, L"Restart\u2026"}, {kShutDown, L"Shut Down\u2026"}, Separator(),
+        {kExit, L"Exit Velora"},
+    };
     RECT r{};
     GetWindowRect(hwnd_, &r);
-    float s = ui::Scale(dpi_);
+    const float s = ui::Scale(dpi_);
+    // The popup sits 4.5 pt under the capsule's bottom edge and lines up with the capsule's left edge.
+    const float top = (tokens::size::kMenuBarHeight + tm::kCapsuleHeight) / 2 + tm::kPopupGap;
     menuOpen_ = true;
     Draw();
-    SetForegroundWindow(hwnd_);  // required for the menu to dismiss correctly
-    UINT cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_LEFTALIGN | TPM_TOPALIGN,
-                              r.left + static_cast<int>(logoRect_.left * s), r.bottom, 0, hwnd_, nullptr);
-    PostMessageW(hwnd_, WM_NULL, 0, 0);
-    DestroyMenu(menu);
-    menuOpen_ = false;
-    Invalidate();
+    bool opened = popup_.Open(
+        hwnd_, r.left + static_cast<int>(logoRect_.left * s), r.top + static_cast<int>(top * s), std::move(items),
+        [this](unsigned cmd) { RunCommand(cmd); },
+        [this] {
+            menuOpen_ = false;
+            popupClosedAt_ = GetTickCount64();
+            Invalidate();
+        });
+    if (!opened) {
+        menuOpen_ = false;
+        Invalidate();
+    }
+}
 
+void MenuBar::RunCommand(unsigned cmd) {
     switch (cmd) {
         case kAbout: {
             std::wstring text = L"Velora " + std::wstring(L"" VELORA_VERSION) +
@@ -392,7 +401,9 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
             return false;
         case WM_LBUTTONDOWN:
             if (inRect(logoRect_, GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) {
-                ShowVeloraMenu();
+                // A click on the logo while the menu is open closes it; so does the click that deactivated the popup a moment ago.
+                if (popup_.IsOpen()) popup_.Close();
+                else if (GetTickCount64() - popupClosedAt_ > 250) ShowVeloraMenu();
                 result = 0;
                 return true;
             }
