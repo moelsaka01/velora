@@ -232,6 +232,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         return 3;
     }
 
+    // Single instance: a named mutex (per user session, per test profile) turns a second launch away
+    // before it touches anything. The pipe check below stays as the second line of defence.
+    // --recover-only is exempt: it must still be able to run beside a live shell's startup.
+    HANDLE instanceMutex = nullptr;
+    if (!recoverOnly) {
+        std::wstring name = L"Local\\Velora.Shell.SingleInstance";
+        if (CurrentProfile().IsTest()) name += L"." + CurrentProfile().id;
+        instanceMutex = CreateMutexW(nullptr, FALSE, name.c_str());
+        if (instanceMutex && GetLastError() == ERROR_ALREADY_EXISTS) {
+            log::Warn("second velora-shell instance refused (mutex held); exiting");
+            CloseHandle(instanceMutex);
+            return 0;
+        }
+    }
+
     // Single instance: the first pipe instance is ours or nobody's.
     ipc::PipeServer server;
     if (!recoverOnly && !server.Start(ShellPipeName(), HandleRequest)) {
