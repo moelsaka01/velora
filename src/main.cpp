@@ -297,8 +297,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     menubar::MenuBar::Actions menuActions;
     menuActions.exitVelora = [] { PostMessageW(g_window, WM_CLOSE, 0, 0); };
     menuActions.openSettings = [] {
-        auto exe = ExeDir() / L"velora-settings.exe";
-        ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        // velora-settings.exe is a stub until Settings reaches G1 (docs/PROGRESS.md): open Windows Settings meanwhile.
+        // Switch back to ExeDir() / L"velora-settings.exe" when the app ships.
+        ShellExecuteW(nullptr, L"open", L"ms-settings:", nullptr, nullptr, SW_SHOWNORMAL);
     };
     apps::AppsGrid grid(instance);
     g_grid = &grid;
