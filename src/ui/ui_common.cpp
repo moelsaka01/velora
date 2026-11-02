@@ -1,11 +1,15 @@
 #include "ui/ui_common.h"
 
+#include <commctrl.h>
+#include <commoncontrols.h>
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <wincodec.h>
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <condition_variable>
 #include <cwctype>
 #include <deque>
@@ -145,9 +149,13 @@ std::wstring FileDescription(const std::wstring& exePath) {
 
 // ---- icons ---------------------------------------------------------------------------
 
-namespace {
+int IconTierFor(float devicePx) {
+    for (int tier : {64, 96, 128, 192, 256})
+        if (devicePx <= static_cast<float>(tier) + 0.5f) return tier;
+    return 256;
+}
 
-constexpr int kIconPx = 96;
+namespace {
 
 // A usable icon covers at least a few percent of its canvas; an all-transparent bitmap counts as a miss
 // so the next step of the chain gets a chance (some shell handlers "succeed" with an empty image).
@@ -220,53 +228,177 @@ bool HiconToPixels(HICON icon, int px, Pixels* out) {
     return true;
 }
 
+/// Scales premultiplied pixels to exactly px x px with WIC's high-quality cubic filter (it pre-filters when shrinking).
+bool ScaleTo(Pixels* p, int px) {
+    if (p->width == px && p->height == px) return true;
+    if (p->width <= 0 || p->height <= 0 || px <= 0) return false;
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmap> src;
+    ComPtr<IWICBitmapScaler> scaler;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) ||
+        FAILED(wic->CreateBitmapFromMemory(static_cast<UINT>(p->width), static_cast<UINT>(p->height), GUID_WICPixelFormat32bppPBGRA,
+                                           static_cast<UINT>(p->width) * 4, static_cast<UINT>(p->bgra.size()), p->bgra.data(), &src)) ||
+        FAILED(wic->CreateBitmapScaler(&scaler)) ||
+        FAILED(scaler->Initialize(src.Get(), static_cast<UINT>(px), static_cast<UINT>(px), WICBitmapInterpolationModeHighQualityCubic)))
+        return false;
+    Pixels out;
+    out.width = out.height = px;
+    out.bgra.assign(static_cast<size_t>(px) * px * 4, 0);
+    if (FAILED(scaler->CopyPixels(nullptr, static_cast<UINT>(px) * 4, static_cast<UINT>(out.bgra.size()), out.bgra.data()))) return false;
+    *p = std::move(out);
+    return true;
+}
+
+// ---- generic application icon ---------------------------------------------------------
+//
+// For an executable that carries no icon the shell hands back its generic "blank window" icon as if it were a
+// success. It is recognised by comparing 32 x 32 box-filtered thumbnails against the generic icon as the shell
+// itself draws it, so a loader can go on to the next source instead of accepting it.
+
+constexpr int kThumb = 32;
+using Thumb = std::array<std::uint8_t, kThumb * kThumb * 4>;
+
+Thumb MakeThumb(const Pixels& p) {
+    Thumb t{};
+    if (p.width <= 0 || p.height <= 0 || p.bgra.size() < static_cast<size_t>(p.width) * p.height * 4) return t;
+    for (int dy = 0; dy < kThumb; ++dy) {
+        int y0 = dy * p.height / kThumb, y1 = std::max(y0 + 1, (dy + 1) * p.height / kThumb);
+        for (int dx = 0; dx < kThumb; ++dx) {
+            int x0 = dx * p.width / kThumb, x1 = std::max(x0 + 1, (dx + 1) * p.width / kThumb);
+            unsigned sum[4] = {0, 0, 0, 0}, n = 0;
+            for (int y = y0; y < y1; ++y)
+                for (int x = x0; x < x1; ++x, ++n)
+                    for (int c = 0; c < 4; ++c) sum[c] += p.bgra[(static_cast<size_t>(y) * p.width + x) * 4 + c];
+            for (int c = 0; c < 4; ++c) t[(dy * kThumb + dx) * 4 + c] = static_cast<std::uint8_t>(sum[c] / n);
+        }
+    }
+    return t;
+}
+
+double ThumbDistance(const Thumb& a, const Thumb& b) {
+    unsigned long long d = 0;
+    for (size_t i = 0; i < a.size(); ++i) d += static_cast<unsigned>(std::abs(static_cast<int>(a[i]) - static_cast<int>(b[i])));
+    return static_cast<double>(d) / static_cast<double>(a.size());
+}
+
+const std::vector<Thumb>& GenericReferences() {
+    static const std::vector<Thumb> refs = [] {
+        std::vector<Thumb> v;
+        auto add = [&](HICON h, int px) {
+            Pixels pix;
+            if (h && HiconToPixels(h, px, &pix)) v.push_back(MakeThumb(pix));
+            if (h) DestroyIcon(h);
+        };
+        // 1. What Explorer shows for an .exe without an icon (the probe name only has to look like an executable).
+        SHFILEINFOW sfi{};
+        if (SHGetFileInfoW(L"velora-probe.exe", FILE_ATTRIBUTE_NORMAL, &sfi, sizeof sfi, SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES)) {
+            for (int list : {SHIL_JUMBO, SHIL_EXTRALARGE}) {
+                ComPtr<IImageList> il;
+                HICON h = nullptr;
+                if (SUCCEEDED(SHGetImageList(list, IID_PPV_ARGS(&il))) && SUCCEEDED(il->GetIcon(sfi.iIcon, ILD_TRANSPARENT, &h)))
+                    add(h, list == SHIL_JUMBO ? 256 : 48);
+            }
+        }
+        // The generic *document* icon: what the shell shows for a shortcut whose icon file is missing.
+        SHFILEINFOW doc{};
+        if (SHGetFileInfoW(L"velora-probe.velora-unknown", FILE_ATTRIBUTE_NORMAL, &doc, sizeof doc, SHGFI_SYSICONINDEX | SHGFI_USEFILEATTRIBUTES)) {
+            ComPtr<IImageList> il;
+            HICON h = nullptr;
+            if (SUCCEEDED(SHGetImageList(SHIL_JUMBO, IID_PPV_ARGS(&il))) && SUCCEEDED(il->GetIcon(doc.iIcon, ILD_TRANSPARENT, &h))) add(h, 256);
+        }
+        // 2. The standard application icon of user32.
+        add(static_cast<HICON>(CopyImage(LoadIconW(nullptr, IDI_APPLICATION), IMAGE_ICON, 0, 0, 0)), 48);
+        // 3. shell32's generic application icon.
+        HICON big = nullptr;
+        if (SUCCEEDED(SHDefExtractIconW(L"shell32.dll", 2, 0, &big, nullptr, MAKELONG(256, 0)))) add(big, 256);
+        return v;
+    }();
+    return refs;
+}
+
+constexpr double kGenericThreshold = 10.0;  // mean per-byte difference of the thumbnails (0..255)
+
+}  // namespace
+
+double GenericIconDistance(const Pixels& p) {
+    const auto& refs = GenericReferences();
+    if (refs.empty()) return -1;
+    Thumb t = MakeThumb(p);
+    double best = 1e9;
+    for (const auto& r : refs) best = std::min(best, ThumbDistance(t, r));
+    return best;
+}
+
+bool IsGenericAppIcon(const Pixels& p) {
+    double d = GenericIconDistance(p);
+    return d >= 0 && d <= kGenericThreshold;
+}
+
+namespace {
+
+enum class Got { Miss, Generic, Ok };
+
+// A candidate counts when it has content and is not the generic icon; it is then brought to exactly tier x tier.
+Got Judge(Pixels px, int tier, Pixels* out) {
+    if (!HasContent(px)) return Got::Miss;
+    if (IsGenericAppIcon(px)) return Got::Generic;
+    if (!ScaleTo(&px, tier)) return Got::Miss;
+    *out = std::move(px);
+    return Got::Ok;
+}
+
 // Step: shell image factory in icon mode (what Explorer shows), at the needed size.
-bool FromShellFactory(const std::wstring& parsingName, Pixels* out) {
+Got FromShellFactory(const std::wstring& parsingName, int tier, Pixels* out) {
     ComPtr<IShellItem> item;
-    if (FAILED(SHCreateItemFromParsingName(parsingName.c_str(), nullptr, IID_PPV_ARGS(&item)))) return false;
+    if (FAILED(SHCreateItemFromParsingName(parsingName.c_str(), nullptr, IID_PPV_ARGS(&item)))) return Got::Miss;
     ComPtr<IShellItemImageFactory> factory;
-    if (FAILED(item.As(&factory))) return false;
+    if (FAILED(item.As(&factory))) return Got::Miss;
     HBITMAP bmp = nullptr;
-    if (FAILED(factory->GetImage({kIconPx, kIconPx}, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &bmp)) || !bmp) return false;
+    if (FAILED(factory->GetImage({tier, tier}, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &bmp)) || !bmp) return Got::Miss;
     Pixels px;
-    bool ok = HbitmapToPixels(bmp, &px) && HasContent(px);
+    bool have = HbitmapToPixels(bmp, &px);
     DeleteObject(bmp);
-    if (ok) *out = std::move(px);
-    return ok;
+    return have ? Judge(std::move(px), tier, out) : Got::Miss;
 }
 
 // Step: IExtractIcon (through SHDefExtractIcon) on a file + icon index, at the needed size.
-bool FromExtractIcon(const std::wstring& file, int index, Pixels* out) {
-    if (file.empty()) return false;
+Got FromExtractIcon(const std::wstring& file, int index, int tier, Pixels* out) {
+    if (file.empty()) return Got::Miss;
     std::wstring path(MAX_PATH * 2, L'\0');
     DWORD n = ExpandEnvironmentStringsW(file.c_str(), path.data(), static_cast<DWORD>(path.size()));
-    if (n == 0 || n > path.size()) return false;
+    if (n == 0 || n > path.size()) return Got::Miss;
     path.resize(n - 1);
     HICON large = nullptr;
-    if (FAILED(SHDefExtractIconW(path.c_str(), index, 0, &large, nullptr, MAKELONG(kIconPx, 0))) || !large) return false;
+    if (FAILED(SHDefExtractIconW(path.c_str(), index, 0, &large, nullptr, MAKELONG(tier, 0))) || !large) return Got::Miss;
     Pixels px;
-    bool ok = HiconToPixels(large, kIconPx, &px) && HasContent(px);
+    bool have = HiconToPixels(large, tier, &px);
     DestroyIcon(large);
-    if (ok) *out = std::move(px);
-    return ok;
+    return have ? Judge(std::move(px), tier, out) : Got::Miss;
 }
 
 bool IsLink(const std::wstring& s) { return s.size() > 4 && Lower(s.substr(s.size() - 4)) == L".lnk"; }
 
 }  // namespace
 
-// Chain (first success wins; `how` names the step):
+// Chain (first success wins; `how` names the step). A step whose icon is the generic application icon is a miss:
 //   1. IShellItemImageFactory (icon only) on the source itself (.lnk, exe or AppsFolder item)
 //   2. IExtractIcon from the shortcut's own icon location
 //   3. the same two steps on the shortcut's / AppsFolder item's target executable
 // Failure means the caller draws the letter tile, which is the last resort.
-bool LoadIconPixels(const std::wstring& source, Pixels* out, std::string* how, bool skipShellFactory) {
-    auto done = [&](const char* step) {
-        if (how) *how = step;
-        return true;
+bool LoadIconPixels(const std::wstring& source, Pixels* out, std::string* how, bool skipShellFactory, int tier,
+                    std::string* trace) {
+    auto tried = [&](const char* step, Got g) {
+        if (trace) {
+            if (!trace->empty()) *trace += ", ";
+            *trace += step;
+            *trace += g == Got::Ok ? ":ok" : g == Got::Generic ? ":generic" : ":miss";
+        }
+        if (g == Got::Ok && how) *how = step;
+        return g == Got::Ok;
     };
     if (source.empty()) return false;
-    if (!skipShellFactory && FromShellFactory(source, out)) return done("shell-item-image");
+    tier = std::clamp(tier, 16, 512);
+    if (!skipShellFactory && tried("shell-item-image", FromShellFactory(source, tier, out))) return true;
 
     std::wstring target;
     if (IsLink(source)) {
@@ -277,8 +409,8 @@ bool LoadIconPixels(const std::wstring& source, Pixels* out, std::string* how, b
             wchar_t loc[MAX_PATH * 2] = {};
             int idx = 0;
             if (SUCCEEDED(link->GetIconLocation(loc, static_cast<int>(std::size(loc)), &idx)) && loc[0] &&
-                FromExtractIcon(loc, idx, out))
-                return done("link-icon-location");
+                tried("link-icon-location", FromExtractIcon(loc, idx, tier, out)))
+                return true;
             wchar_t t[MAX_PATH * 2] = {};
             if (SUCCEEDED(link->GetPath(t, static_cast<int>(std::size(t)), nullptr, SLGP_UNCPRIORITY))) target = t;
         }
@@ -293,12 +425,11 @@ bool LoadIconPixels(const std::wstring& source, Pixels* out, std::string* how, b
         }
     } else {
         // A plain exe path: its first icon resource.
-        if (FromExtractIcon(source, 0, out)) return done("exe-icon");
-        return false;
+        return tried("exe-icon", FromExtractIcon(source, 0, tier, out));
     }
     if (!target.empty()) {
-        if (!skipShellFactory && FromShellFactory(target, out)) return done("target-shell-item-image");
-        if (FromExtractIcon(target, 0, out)) return done("target-exe-icon");
+        if (!skipShellFactory && tried("target-shell-item-image", FromShellFactory(target, tier, out))) return true;
+        if (tried("target-exe-icon", FromExtractIcon(target, 0, tier, out))) return true;
     }
     return false;
 }
@@ -336,10 +467,11 @@ bool LoadVeloraIcon(int px, Pixels* out) {
 struct IconStore::Impl {
     std::mutex mutex;
     std::condition_variable cv;
-    std::map<std::wstring, std::shared_ptr<const Pixels>> done;
-    std::set<std::wstring> requested;
-    std::map<std::wstring, std::pair<int, ULONGLONG>> failures;  // attempts, tick of the last one
-    std::deque<std::wstring> queue;
+    using Key = std::pair<std::wstring, int>;  // source, tier
+    std::map<Key, std::shared_ptr<const Pixels>> done;
+    std::set<Key> requested;
+    std::map<Key, std::pair<int, ULONGLONG>> failures;  // attempts, tick of the last one
+    std::deque<Key> queue;
     std::thread worker;
     bool stop = false;
     HWND notify = nullptr;
@@ -349,29 +481,30 @@ struct IconStore::Impl {
     void Run() {
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         for (;;) {
-            std::wstring src;
+            Key key;
             {
                 std::unique_lock lock(mutex);
                 cv.wait(lock, [&] { return stop || !queue.empty(); });
                 if (stop) break;
-                src = std::move(queue.front());
+                key = std::move(queue.front());
                 queue.pop_front();
             }
             auto px = std::make_shared<Pixels>();
-            std::string how;
-            if (LoadIconPixels(src, px.get(), &how)) {
-                log::Info("icons: " + WideToUtf8(src) + " via " + how);
+            std::string how, trace;
+            const std::string name = WideToUtf8(key.first) + " @" + std::to_string(key.second);
+            if (LoadIconPixels(key.first, px.get(), &how, false, key.second, &trace)) {
+                log::Info("icons: " + name + " via " + how);
             } else {
-                log::Warn("icons: no icon found for " + WideToUtf8(src) + "; drawing the letter tile");
+                log::Warn("icons: no icon found for " + name + " (" + trace + "); drawing the letter tile");
                 px = nullptr;
                 std::lock_guard lock(mutex);
-                auto& f = failures[src];
+                auto& f = failures[key];
                 f = {f.first + 1, GetTickCount64()};
             }
             HWND n = nullptr;
             {
                 std::lock_guard lock(mutex);
-                if (px) done[src] = px;
+                if (px) done[key] = px;
                 n = notify;
             }
             if (px && n) PostMessageW(n, kMsgIconsLoaded, 0, 0);
@@ -393,27 +526,35 @@ void IconStore::SetNotifyWindow(HWND hwnd) {
     impl_->notify = hwnd;
 }
 
-std::shared_ptr<const Pixels> IconStore::Find(const std::wstring& source) {
+std::shared_ptr<const Pixels> IconStore::Find(const std::wstring& source, int tier) {
     std::lock_guard lock(impl_->mutex);
-    auto it = impl_->done.find(source);
+    auto it = impl_->done.find({source, tier});
     return it == impl_->done.end() ? nullptr : it->second;
 }
 
-void IconStore::Request(const std::wstring& source) {
+void IconStore::Request(const std::wstring& source, int tier) {
     if (source.empty()) return;
+    const Impl::Key key{source, tier};
     std::lock_guard lock(impl_->mutex);
     if (impl_->stop) return;
-    if (!impl_->requested.insert(source).second) {
+    if (!impl_->requested.insert(key).second) {
         // A failed load is retried (the shell may not have been ready), at most 3 times, 5 s apart.
-        auto f = impl_->failures.find(source);
+        auto f = impl_->failures.find(key);
         if (f == impl_->failures.end() || f->second.first >= 3 || GetTickCount64() - f->second.second < 5000 ||
-            impl_->done.count(source))
+            impl_->done.count(key))
             return;
-        if (std::find(impl_->queue.begin(), impl_->queue.end(), source) != impl_->queue.end()) return;
+        if (std::find(impl_->queue.begin(), impl_->queue.end(), key) != impl_->queue.end()) return;
     }
-    impl_->queue.push_back(source);
+    impl_->queue.push_back(key);
     if (!impl_->worker.joinable()) impl_->worker = std::thread([this] { impl_->Run(); });
     impl_->cv.notify_one();
+}
+
+bool IconStore::Failed(const std::wstring& source, int tier) {
+    std::lock_guard lock(impl_->mutex);
+    const Impl::Key key{source, tier};
+    auto f = impl_->failures.find(key);
+    return f != impl_->failures.end() && !impl_->done.count(key);
 }
 
 int IconStore::AddListener(std::function<void()> fn) {
@@ -445,6 +586,37 @@ ComPtr<ID2D1Bitmap> MakeBitmap(ID2D1DeviceContext* dc, const Pixels& p) {
         D2D1::BitmapProperties(D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED));
     if (FAILED(dc->CreateBitmap(D2D1::SizeU(p.width, p.height), p.bgra.data(), p.width * 4, props, &bmp))) return nullptr;
     return bmp;
+}
+
+void DrawFallbackTile(ID2D1DeviceContext* dc, const D2D1_RECT_F& rect, const std::wstring& name, float opacity) {
+    if (!dc) return;
+    // A stable hue from the name (FNV-1a), moderate saturation: tiles differ from each other and stay quiet.
+    std::uint32_t h = 2166136261u;
+    for (wchar_t c : Lower(name)) h = (h ^ static_cast<std::uint32_t>(c)) * 16777619u;
+    const float hue = static_cast<float>(h % 360) / 60.0f, s = 0.42f, l = 0.46f;
+    const float c = (1 - std::fabs(2 * l - 1)) * s, x = c * (1 - std::fabs(std::fmod(hue, 2.0f) - 1)), m = l - c / 2;
+    float r = 0, g = 0, b = 0;
+    switch (static_cast<int>(hue)) {
+        case 0: r = c; g = x; break;
+        case 1: r = x; g = c; break;
+        case 2: g = c; b = x; break;
+        case 3: g = x; b = c; break;
+        case 4: r = x; b = c; break;
+        default: r = c; b = x; break;
+    }
+    ComPtr<ID2D1SolidColorBrush> brush;
+    if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(r + m, g + m, b + m, opacity), &brush))) return;
+    const float size = rect.right - rect.left, radius = size * 0.227f;
+    dc->FillRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get());
+    std::wstring letter = name.empty() ? L"?" : name.substr(0, 1);
+    for (auto& ch : letter) ch = static_cast<wchar_t>(std::towupper(ch));
+    brush->SetColor(D2D1::ColorF(1, 1, 1, opacity));
+    DrawLabel(dc, brush.Get(), letter, rect, Format(size * 0.46f, DWRITE_FONT_WEIGHT_SEMI_BOLD), DWRITE_TEXT_ALIGNMENT_CENTER);
+}
+
+void DrawIcon(ID2D1DeviceContext* dc, ID2D1Bitmap* bmp, const D2D1_RECT_F& dest, float opacity) {
+    if (!dc || !bmp) return;
+    dc->DrawBitmap(bmp, &dest, opacity, D2D1_INTERPOLATION_MODE_HIGH_QUALITY_CUBIC, nullptr, nullptr);
 }
 
 }  // namespace velora::ui

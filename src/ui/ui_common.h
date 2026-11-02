@@ -49,11 +49,27 @@ struct Pixels {
     std::vector<std::uint8_t> bgra;  // premultiplied, top-down
 };
 
+// Icons are decoded at a "tier": the pixel edge of the image kept in memory. A tier is never smaller than the
+// device pixels the icon is drawn at (that would be an upscale), and the set is small so the cache stays bounded.
+inline constexpr int kIconTierDefault = 96;
+int IconTierFor(float devicePx);  // 64, 96, 128, 192 or 256: the smallest tier >= devicePx
+
+// True when `p` is the shell's generic application icon (the blank-window icon Explorer shows for an executable that
+// carries no icon of its own), which a loader must treat as "no icon found here" and try the next source. Needs COM
+// on the calling thread (the reference images come from the shell). Compared as 32 x 32 thumbnails, so any size works.
+bool IsGenericAppIcon(const Pixels& p);
+// Smallest mean per-byte difference (0..255) between `p` and the generic references; -1 when none could be built.
+// Diagnostics and tests only.
+double GenericIconDistance(const Pixels& p);
+
 // Synchronous icon load for a shell parsing name (an exe path, a .lnk or "shell:AppsFolder\\<aumid>") through the
-// fallback chain: shell image factory -> shortcut icon location -> target exe. Needs COM on the calling thread.
-// `how` (optional) receives the step that produced the pixels. False means: draw the letter tile.
+// fallback chain: shell image factory -> shortcut icon location -> target exe. A step that yields only the generic
+// application icon counts as a miss and the chain goes on. The result is exactly tier x tier pixels. Needs COM on
+// the calling thread. `how` (optional) receives the step that produced the pixels; `trace` (optional) receives
+// every step tried and its outcome (ok / generic / miss). False means: draw the letter tile.
 // `skipShellFactory` exists for tests: it forces the later steps of the chain.
-bool LoadIconPixels(const std::wstring& source, Pixels* out, std::string* how = nullptr, bool skipShellFactory = false);
+bool LoadIconPixels(const std::wstring& source, Pixels* out, std::string* how = nullptr, bool skipShellFactory = false,
+                    int tier = kIconTierDefault, std::string* trace = nullptr);
 // Velora's own app icon, decoded from the embedded PNG resource (src/shell.rc) and scaled with a high-quality
 // (Fant) filter to exactly `px` x `px` device pixels. False when the resource is absent (tests, other exes).
 // Needs COM on the calling thread.
@@ -67,8 +83,11 @@ public:
     void SetNotifyWindow(HWND hwnd);
     // Returns null until the icon is loaded. `source` is a shell parsing name
     // ("C:\\x.exe" or "shell:AppsFolder\\<aumid>").
-    std::shared_ptr<const Pixels> Find(const std::wstring& source);
-    void Request(const std::wstring& source);
+    // Pixels are kept per (source, tier); a tier comes from IconTierFor().
+    std::shared_ptr<const Pixels> Find(const std::wstring& source, int tier = kIconTierDefault);
+    void Request(const std::wstring& source, int tier = kIconTierDefault);
+    // True once every attempt at this icon failed (the caller then draws DrawFallbackTile instead of a placeholder).
+    bool Failed(const std::wstring& source, int tier = kIconTierDefault);
     // Main thread: runs the registered listeners after kMsgIconsLoaded.
     void Dispatch();
     int AddListener(std::function<void()> fn);
@@ -84,5 +103,11 @@ private:
 
 // Turns loaded pixels into a bitmap on `dc`; null on failure.
 Microsoft::WRL::ComPtr<ID2D1Bitmap> MakeBitmap(ID2D1DeviceContext* dc, const Pixels& p);
+// The tile drawn when no icon could be found anywhere: a rounded square (corner radius 22.7 % of its size, the Dock
+// icon radius of docs/MACOS_UI_SPEC.md) in a colour taken from the name, with the first letter in white.
+void DrawFallbackTile(ID2D1DeviceContext* dc, const D2D1_RECT_F& rect, const std::wstring& name, float opacity = 1.0f);
+// Draws an icon bitmap into `dest` (DIPs) with the high-quality cubic filter: when the bitmap is larger than the
+// destination in device pixels, Direct2D pre-filters before it samples, so downscaled icons stay sharp.
+void DrawIcon(ID2D1DeviceContext* dc, ID2D1Bitmap* bmp, const D2D1_RECT_F& dest, float opacity = 1.0f);
 
 }  // namespace velora::ui

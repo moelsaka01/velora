@@ -171,3 +171,10 @@ Machine: the developer laptop on a normal desktop (Claude app, browser, game lib
 ## Backlog
 
 - Day 7 experiment: read tray icons via UI Automation, time-boxed 2 h (read-only; would feed a mirrored status strip if it works without injecting into Explorer).
+
+### Phase 3 / icons (PR feat/icon-quality)
+- `ui::IconStore` is keyed by (source, tier) and every consumer asks for the tier of its own device size (grid 56 DIP, Dock 52 DIP today); icons are exactly tier x tier pixels (WIC high-quality cubic) and are drawn with Direct2D's high-quality cubic filter.
+- Generic-icon detection (`IsGenericAppIcon`): two references (application and document icon) drawn by the shell. `icons_test` on this machine (187 -> 185 apps after dropping stale shortcuts): 179 get a real icon, 6 fall to the letter tile; 8 apps that previously showed the generic document icon now find their real icon via the target exe. Distance of real icons to the nearest generic reference: 50+; threshold 10.
+- Phase 1 suspects, with causes found by reading the shortcuts (not guessed): Application Verifier (x64/WOW) is a real exe with no icon resource -> letter tile; mikroC PRO for PIC, mikroProg Suite, Zoom Workplace are shortcuts of uninstalled programs -> dropped from the index; Database Compare is a shortcut to a missing Office tool (AppVLP launcher) -> dropped; Spreadsheet Compare already had a real icon.
+- Diagnostics: `VELORA_ICON_DUMP=<dir> icons_test.exe` writes every loaded icon as a BMP; failures print the full chain trace (`shell-item-image:generic, target-shell-item-image:miss, ...`).
+- Not verified: how the new tile and the tiers look on screen (guided check).

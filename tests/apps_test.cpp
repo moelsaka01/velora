@@ -44,6 +44,34 @@ int main() {
     CHECK(IsNoiseShortcut(L"Uninstall Foo"));
     CHECK(IsNoiseShortcut(L"Foo Readme"));
     CHECK(IsNoiseShortcut(L"Foo Help"));
+
+    CHECK(RealProgram(L"C:\\Office\\root\\Client\\AppVLP.exe", L"\"C:\\Office\\DCF\\TOOL.EXE\" /x") == L"C:\\Office\\DCF\\TOOL.EXE");
+    CHECK(RealProgram(L"C:\\a\\app.exe", L"\"C:\\b\\other.exe\"") == L"C:\\a\\app.exe");
+    CHECK(RealProgram(L"C:\\Office\\AppVLP.exe", L"no quotes") == L"C:\\Office\\AppVLP.exe");
+    CHECK(RealProgram(L"C:\\Office\\AppVLP.exe", L"\"C:\\x\\readme.txt\"") == L"C:\\Office\\AppVLP.exe");
+
+    // Stale shortcuts: a classic app whose program is gone is dropped; MSIX, unknown and unexpanded targets never are.
+    {
+        auto none = [](const std::wstring&) { return false; };
+        auto all = [](const std::wstring&) { return true; };
+        AppEntry gone;
+        gone.name = L"Gone";
+        gone.exePath = L"C:\\x\\gone.exe";
+        CHECK(IsStaleEntry(gone, none) && !IsStaleEntry(gone, all));
+        AppEntry msix = gone;  // a packaged app has an AUMID and no exe path of its own
+        msix.aumid = L"Pkg!App";
+        msix.exePath.clear();
+        CHECK(!IsStaleEntry(msix, none));
+        AppEntry classic = gone;  // the shell gives classic shortcuts an AUMID too: it does not make them exempt
+        classic.aumid = L"zoom.us.Zoom Video Meetings";
+        CHECK(IsStaleEntry(classic, none));
+        AppEntry unknown;
+        unknown.name = L"Unknown";
+        CHECK(!IsStaleEntry(unknown, none));
+        AppEntry env = gone;
+        env.exePath = L"%ProgramFiles%\\x\\a.exe";
+        CHECK(!IsStaleEntry(env, none));
+    }
     CHECK(!IsNoiseShortcut(L"Notepad"));
     CHECK(!IsNoiseShortcut(L"Helper Tool"));
 

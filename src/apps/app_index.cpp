@@ -27,6 +27,8 @@ namespace {
 
 // PKEY_AppUserModel_ID and PKEY_Link_TargetParsingPath, defined here so no extra .lib is needed.
 constexpr PROPERTYKEY kPkeyAumid = {{0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}}, 5};
+// PKEY_Link_Arguments
+constexpr PROPERTYKEY kPkeyLinkArgs = {{0x436F2667, 0x14E2, 0x4FEB, {0xB3, 0x0A, 0x14, 0x6C, 0x53, 0xB5, 0xB6, 0x74}}, 100};
 constexpr PROPERTYKEY kPkeyLinkTarget = {{0xB9B4B3FC, 0x2B51, 0x4A42, {0xB5, 0xD8, 0x32, 0x41, 0x46, 0xAF, 0xCF, 0x25}}, 2};
 
 std::wstring Lower(std::wstring s) {
@@ -70,7 +72,8 @@ std::vector<AppEntry> ScanAppsFolder() {
         if (SUCCEEDED(item.As(&item2))) {
             e.aumid = PropString(item2.Get(), kPkeyAumid);
             std::wstring target = PropString(item2.Get(), kPkeyLinkTarget);
-            if (target.size() > 4 && Lower(target.substr(target.size() - 4)) == L".exe") e.exePath = target;
+            if (target.size() > 4 && Lower(target.substr(target.size() - 4)) == L".exe")
+                e.exePath = RealProgram(target, PropString(item2.Get(), kPkeyLinkArgs));
         }
         // Classic shortcuts to documents/readmes show up here too; MSIX apps (with an AUMID) are never noise.
         if (e.aumid.empty() && IsNoiseShortcut(e.name)) continue;
@@ -92,6 +95,8 @@ void ScanLinkDir(const std::filesystem::path& dir, IShellLinkW* link, IPersistFi
         if (FAILED(link->GetPath(target, static_cast<int>(std::size(target)), nullptr, SLGP_UNCPRIORITY)) || !target[0]) continue;
         std::wstring t = target;
         if (Lower(std::filesystem::path(t).extension().wstring()) != L".exe") continue;
+        wchar_t args[MAX_PATH * 2] = {};
+        if (SUCCEEDED(link->GetArguments(args, static_cast<int>(std::size(args))))) t = RealProgram(t, args);
         AppEntry e;
         e.name = name;
         e.exePath = t;
@@ -220,8 +225,29 @@ std::vector<size_t> Filter(const std::vector<AppEntry>& entries, const std::wstr
     return out;
 }
 
+std::wstring RealProgram(const std::wstring& exe, const std::wstring& args) {
+    // Click-to-Run Office starts its tools through the App-V launcher: AppVLP.exe "C:\...\TOOL.EXE".
+    if (Lower(std::filesystem::path(exe).filename().wstring()) != L"appvlp.exe" || args.size() < 3 || args[0] != L'"') return exe;
+    size_t close = args.find(L'"', 1);
+    if (close == std::wstring::npos) return exe;
+    std::wstring program = args.substr(1, close - 1);
+    return Lower(std::filesystem::path(program).extension().wstring()) == L".exe" ? program : exe;
+}
+
+bool IsStaleEntry(const AppEntry& entry, const std::function<bool(const std::wstring&)>& exists) {
+    if (entry.exePath.empty() || entry.exePath.find(L'%') != std::wstring::npos) return false;
+    return !exists(entry.exePath);
+}
+
 std::vector<AppEntry> ScanInstalledApps() {
-    return MergeEntries({ScanAppsFolder(), ScanStartMenu()});
+    auto apps = MergeEntries({ScanAppsFolder(), ScanStartMenu()});
+    std::error_code ec;
+    std::erase_if(apps, [&](const AppEntry& e) {
+        bool stale = IsStaleEntry(e, [&](const std::wstring& p) { return std::filesystem::exists(p, ec); });
+        if (stale) log::Info("apps: dropped '" + WideToUtf8(e.name) + "' (its program " + WideToUtf8(e.exePath) + " is gone)");
+        return stale;
+    });
+    return apps;
 }
 
 bool Launch(const AppEntry& app) {

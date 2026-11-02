@@ -336,12 +336,13 @@ int Dock::HitItem(float x, float y) const {
 ID2D1Bitmap* Dock::BitmapFor(ID2D1DeviceContext* dc, const std::wstring& icon) {
     if (icon.empty()) return nullptr;
     if (auto it = bitmaps_.find(icon); it != bitmaps_.end()) return it->second.Get();
-    if (auto px = ui::IconStore::Get().Find(icon)) {
+    const int tier = ui::IconTierFor(kIcon * ui::Scale(dpi_));  // decoded at the device size: no upscaling
+    if (auto px = ui::IconStore::Get().Find(icon, tier)) {
         auto bmp = ui::MakeBitmap(dc, *px);
         bitmaps_[icon] = bmp;
         return bmp.Get();
     }
-    ui::IconStore::Get().Request(icon);
+    ui::IconStore::Get().Request(icon, tier);
     return nullptr;
 }
 
@@ -399,7 +400,7 @@ void Dock::Draw() {
             // The Apps item shows the Velora app icon, scaled to the device pixels of this display; the drawn
             // dot grid (original glyph) is the fallback when the resource is unavailable.
             if (ID2D1Bitmap* logo = VeloraBitmap(dc, ir)) {
-                dc->DrawBitmap(logo, ir, appear_, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+                ui::DrawIcon(dc, logo, ir, appear_);
             } else {
                 brush->SetColor(ui::Rgba(p.accent, appear_));
                 dc->FillRoundedRectangle(D2D1::RoundedRect(ir, 12, 12), brush.Get());
@@ -409,12 +410,12 @@ void Dock::Draw() {
                     for (int c = -1; c <= 1; ++c) dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx + c * 10, cy + r * 10), 3, 3), brush.Get());
             }
         } else if (ID2D1Bitmap* bmp = BitmapFor(dc, it.app.icon)) {
-            dc->DrawBitmap(bmp, ir, appear_, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+            ui::DrawIcon(dc, bmp, ir, appear_);
+        } else if (ui::IconStore::Get().Failed(it.app.icon, ui::IconTierFor(kIcon * ui::Scale(dpi_)))) {
+            ui::DrawFallbackTile(dc, ir, it.app.name, appear_);  // no icon exists anywhere (not even a generic one)
         } else {
-            brush->SetColor(ui::Rgba(p.separator, appear_));
+            brush->SetColor(ui::Rgba(p.separator, appear_));  // placeholder until the icon arrives
             dc->FillRoundedRectangle(D2D1::RoundedRect(ir, 12, 12), brush.Get());
-            brush->SetColor(ui::Rgba(p.text, appear_));
-            ui::DrawLabel(dc, brush.Get(), it.app.name.substr(0, 1), ir, ui::Format(20, DWRITE_FONT_WEIGHT_SEMI_BOLD), DWRITE_TEXT_ALIGNMENT_CENTER);
         }
         if (it.Running()) {
             brush->SetColor(ui::Rgba(it.Active() ? p.text : p.textSecondary, appear_));

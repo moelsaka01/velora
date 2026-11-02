@@ -226,16 +226,19 @@ void AppsGrid::Draw() {
         float ix = x + (g.tileW - kIconDip) / 2, iy = y + 14;
         D2D1_RECT_F ir = D2D1::RectF(ix, iy, ix + kIconDip, iy + kIconDip);
         ComPtr<ID2D1Bitmap> bmp;
+        const int tier = ui::IconTierFor(kIconDip * s);  // decoded at the device size: no upscaling
         if (auto it = bitmaps_.find(app.icon); it != bitmaps_.end()) {
             bmp = it->second;
-        } else if (auto px = ui::IconStore::Get().Find(app.icon)) {
+        } else if (auto px = ui::IconStore::Get().Find(app.icon, tier)) {
             bmp = ui::MakeBitmap(dc, *px);
             bitmaps_[app.icon] = bmp;
         } else {
-            ui::IconStore::Get().Request(app.icon);
+            ui::IconStore::Get().Request(app.icon, tier);
         }
         if (bmp) {
-            dc->DrawBitmap(bmp.Get(), ir, open_, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+            ui::DrawIcon(dc, bmp.Get(), ir, open_);
+        } else if (ui::IconStore::Get().Failed(app.icon, tier)) {
+            ui::DrawFallbackTile(dc, ir, app.name, open_);  // no icon exists anywhere (not even a generic one)
         } else {
             brush->SetColor(ui::Rgba(p.separator, open_));  // placeholder until the icon arrives
             dc->FillRoundedRectangle(D2D1::RoundedRect(ir, 12, 12), brush.Get());
