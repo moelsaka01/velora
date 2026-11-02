@@ -39,6 +39,57 @@ double SquircleCoverage(const Pixels& p) {
 
 bool IsFilledTile(const Pixels& p) { return SquircleCoverage(p) >= 0.92; }
 
+bool IsLowRes(const Pixels& p) {
+    constexpr int kN = 48;
+    if (p.width < 96 || p.height < 96 || p.bgra.size() < static_cast<size_t>(p.width) * p.height * 4) return false;
+    // Box-reduce to kN x kN, then compare against bilinear samples of the reduced image.
+    std::vector<float> reduced(static_cast<size_t>(kN) * kN * 4, 0.0f);
+    for (int dy = 0; dy < kN; ++dy)
+        for (int dx = 0; dx < kN; ++dx) {
+            const int x0 = dx * p.width / kN, x1 = (dx + 1) * p.width / kN, y0 = dy * p.height / kN, y1 = (dy + 1) * p.height / kN;
+            float sum[4] = {0, 0, 0, 0};
+            int n = 0;
+            for (int y = y0; y < y1; ++y)
+                for (int x = x0; x < x1; ++x, ++n)
+                    for (int c = 0; c < 4; ++c) sum[c] += p.bgra[(static_cast<size_t>(y) * p.width + x) * 4 + c];
+            for (int c = 0; c < 4; ++c) reduced[(static_cast<size_t>(dy) * kN + dx) * 4 + c] = n ? sum[c] / n : 0;
+        }
+    double diff = 0;
+    size_t count = 0;
+    for (int y = 0; y < p.height; ++y)
+        for (int x = 0; x < p.width; ++x) {
+            const float u = (x + 0.5f) * kN / p.width - 0.5f, v = (y + 0.5f) * kN / p.height - 0.5f;
+            const int x0 = static_cast<int>(std::floor(u)), y0 = static_cast<int>(std::floor(v));
+            const float fx = u - x0, fy = v - y0;
+            for (int c = 0; c < 4; ++c) {
+                float s = 0;
+                for (int j = 0; j < 2; ++j)
+                    for (int i = 0; i < 2; ++i) {
+                        const int sx = std::clamp(x0 + i, 0, kN - 1), sy = std::clamp(y0 + j, 0, kN - 1);
+                        s += (i ? fx : 1 - fx) * (j ? fy : 1 - fy) * reduced[(static_cast<size_t>(sy) * kN + sx) * 4 + c];
+                    }
+                diff += std::fabs(s - p.bgra[(static_cast<size_t>(y) * p.width + x) * 4 + c]);
+                ++count;
+            }
+        }
+    return count && diff / static_cast<double>(count) < 2.5;
+}
+
+bool IsBlankIcon(const Pixels& p) {
+    const size_t total = static_cast<size_t>(p.width) * p.height;
+    if (total == 0 || p.bgra.size() < total * 4) return true;
+    size_t opaque = 0;
+    double lum = 0;
+    for (size_t i = 0; i < total; ++i) {
+        const std::uint8_t* s = &p.bgra[i * 4];
+        if (s[3] <= 16) continue;
+        ++opaque;
+        lum += (0.114 * s[0] + 0.587 * s[1] + 0.299 * s[2]) / s[3];  // unpremultiplied luminance, 0..1
+    }
+    if (opaque * 25 < total) return true;  // < 4 % of the area
+    return lum / static_cast<double>(opaque) > 0.94;  // white on a light tile
+}
+
 Pixels ComposeOnTile(const Pixels& src) {
     Pixels out;
     out.width = src.width;
@@ -48,7 +99,7 @@ Pixels ComposeOnTile(const Pixels& src) {
     const float margin = kTileMargin * w, half = w / 2 - margin, r = kTileRadius * (w - 2 * margin);
     const float shadowDy = 0.012f * w, shadowBlur = 0.022f * w;
     // Icon box inside the tile.
-    const float box = kTileContent * (w - 2 * margin), bx = (w - box) / 2, by = (h - box) / 2;
+    const float box = (src.lowRes ? kTileContentLowRes : kTileContent) * (w - 2 * margin), bx = (w - box) / 2, by = (h - box) / 2;
 
     for (int y = 0; y < src.height; ++y) {
         for (int x = 0; x < src.width; ++x) {

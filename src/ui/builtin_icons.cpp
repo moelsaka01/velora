@@ -26,6 +26,16 @@ extern const char* const kSvg_clock;
 extern const char* const kSvg_control_panel;
 extern const char* const kSvg_notepad;
 extern const char* const kSvg_task_manager;
+extern const char* const kSvg_character_map;
+extern const char* const kSvg_computer_management;
+extern const char* const kSvg_component_services;
+extern const char* const kSvg_disk_cleanup;
+extern const char* const kSvg_event_viewer;
+extern const char* const kSvg_registry_editor;
+extern const char* const kSvg_services;
+extern const char* const kSvg_powershell;
+extern const char* const kSvg_snipping_tool;
+extern const char* const kSvg_paint;
 
 namespace {
 
@@ -54,7 +64,19 @@ BuiltinIcon BuiltinIconFor(const std::wstring& source) {
         if (Has(s, L"microsoft.windows.camera")) return BuiltinIcon::Camera;
         if (Has(s, L"microsoft.windowsalarms")) return BuiltinIcon::Clock;
         if (Has(s, L"microsoft.windowsnotepad")) return BuiltinIcon::Notepad;
+        if (Has(s, L"windowspowershell") || Has(s, L"system32\\powershell.exe")) return BuiltinIcon::PowerShell;
         if (Has(s, L"microsoft.windowsterminal") || Has(s, L"powershell")) return BuiltinIcon::Terminal;
+        // Classic tools appear in AppsFolder under their exe / snap-in path (the system folder GUID varies in front of it).
+        if (Has(s, L"cmd.exe")) return BuiltinIcon::CommandPrompt;
+        if (Has(s, L"charmap")) return BuiltinIcon::CharacterMap;
+        if (Has(s, L"compmgmt")) return BuiltinIcon::ComputerManagement;
+        if (Has(s, L"comexp")) return BuiltinIcon::ComponentServices;
+        if (Has(s, L"cleanmgr")) return BuiltinIcon::DiskCleanup;
+        if (Has(s, L"eventvwr")) return BuiltinIcon::EventViewer;
+        if (Has(s, L"regedit")) return BuiltinIcon::RegistryEditor;
+        if (Has(s, L"services.msc")) return BuiltinIcon::Services;
+        if (Has(s, L"microsoft.screensketch") || Has(s, L"snippingtool")) return BuiltinIcon::SnippingTool;
+        if (Has(s, L"microsoft.paint") || Has(s, L"mspaint")) return BuiltinIcon::Paint;
         if (Has(s, L"immersivecontrolpanel")) return BuiltinIcon::Settings;
         if (Has(s, L"microsoft.windows.explorer") || Has(s, L"microsoft.windows.fileexplorer")) return BuiltinIcon::Files;
         if (Has(s, L"taskmgr")) return BuiltinIcon::TaskManager;
@@ -63,10 +85,20 @@ BuiltinIcon BuiltinIconFor(const std::wstring& source) {
     }
     if (stem == L"explorer" || stem == L"file explorer") return BuiltinIcon::Files;
     if (stem == L"settings") return BuiltinIcon::Settings;
-    if (stem == L"powershell" || stem == L"windows powershell" || stem == L"wt" || stem == L"windows terminal" || stem == L"terminal" ||
-        stem == L"pwsh" || stem == L"powershell 7")
+    if (stem == L"powershell" || stem.rfind(L"windows powershell", 0) == 0) return BuiltinIcon::PowerShell;
+    if (stem == L"wt" || stem == L"windows terminal" || stem == L"terminal" || stem == L"pwsh" || stem == L"powershell 7" ||
+        stem.rfind(L"powershell 7", 0) == 0)
         return BuiltinIcon::Terminal;
-    if (stem == L"cmd" || stem == L"command prompt") return BuiltinIcon::CommandPrompt;
+    if (stem == L"cmd" || stem.rfind(L"command prompt", 0) == 0) return BuiltinIcon::CommandPrompt;
+    if (stem == L"charmap" || stem == L"character map") return BuiltinIcon::CharacterMap;
+    if (stem == L"computer management" || stem == L"compmgmt") return BuiltinIcon::ComputerManagement;
+    if (stem == L"component services" || stem == L"comexp") return BuiltinIcon::ComponentServices;
+    if (stem == L"disk cleanup" || stem == L"cleanmgr") return BuiltinIcon::DiskCleanup;
+    if (stem == L"event viewer" || stem == L"eventvwr") return BuiltinIcon::EventViewer;
+    if (stem == L"registry editor" || stem == L"regedit") return BuiltinIcon::RegistryEditor;
+    if (stem == L"services") return BuiltinIcon::Services;
+    if (stem == L"snipping tool" || stem == L"snippingtool") return BuiltinIcon::SnippingTool;
+    if (stem == L"paint" || stem == L"mspaint") return BuiltinIcon::Paint;
     if (stem == L"calc" || stem == L"calculator") return BuiltinIcon::Calculator;
     if (stem == L"camera") return BuiltinIcon::Camera;
     if (stem == L"clock" || stem == L"alarms & clock") return BuiltinIcon::Clock;
@@ -88,6 +120,16 @@ const char* BuiltinIconSvg(BuiltinIcon i) {
         case BuiltinIcon::ControlPanel: return kSvg_control_panel;
         case BuiltinIcon::Notepad: return kSvg_notepad;
         case BuiltinIcon::TaskManager: return kSvg_task_manager;
+        case BuiltinIcon::CharacterMap: return kSvg_character_map;
+        case BuiltinIcon::ComputerManagement: return kSvg_computer_management;
+        case BuiltinIcon::ComponentServices: return kSvg_component_services;
+        case BuiltinIcon::DiskCleanup: return kSvg_disk_cleanup;
+        case BuiltinIcon::EventViewer: return kSvg_event_viewer;
+        case BuiltinIcon::RegistryEditor: return kSvg_registry_editor;
+        case BuiltinIcon::Services: return kSvg_services;
+        case BuiltinIcon::PowerShell: return kSvg_powershell;
+        case BuiltinIcon::SnippingTool: return kSvg_snipping_tool;
+        case BuiltinIcon::Paint: return kSvg_paint;
         default: return "";
     }
 }
@@ -104,6 +146,16 @@ const char* BuiltinIconName(BuiltinIcon i) {
         case BuiltinIcon::ControlPanel: return "control-panel";
         case BuiltinIcon::Notepad: return "notepad";
         case BuiltinIcon::TaskManager: return "task-manager";
+        case BuiltinIcon::CharacterMap: return "character-map";
+        case BuiltinIcon::ComputerManagement: return "computer-management";
+        case BuiltinIcon::ComponentServices: return "component-services";
+        case BuiltinIcon::DiskCleanup: return "disk-cleanup";
+        case BuiltinIcon::EventViewer: return "event-viewer";
+        case BuiltinIcon::RegistryEditor: return "registry-editor";
+        case BuiltinIcon::Services: return "services";
+        case BuiltinIcon::PowerShell: return "powershell";
+        case BuiltinIcon::SnippingTool: return "snipping-tool";
+        case BuiltinIcon::Paint: return "paint";
         default: return "none";
     }
 }

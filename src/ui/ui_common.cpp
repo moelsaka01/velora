@@ -403,9 +403,11 @@ enum class Got { Miss, Generic, Ok };
 
 // A candidate counts when it has content and is not the generic icon; it is then brought to exactly tier x tier.
 Got Judge(Pixels px, int tier, Pixels* out) {
-    if (!HasContent(px)) return Got::Miss;
+    if (!HasContent(px) || IsBlankIcon(px)) return Got::Miss;
     if (IsGenericAppIcon(px)) return Got::Generic;
+    const bool low = IsLowRes(px);
     if (!ScaleTo(&px, tier)) return Got::Miss;
+    px.lowRes = low;
     *out = std::move(px);
     return Got::Ok;
 }

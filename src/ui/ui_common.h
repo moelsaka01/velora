@@ -50,6 +50,7 @@ std::wstring StemOf(const std::wstring& path);
 struct Pixels {
     int width = 0, height = 0;
     std::vector<std::uint8_t> bgra;  // premultiplied, top-down
+    bool lowRes = false;             // best native source was <= 48 px (enlarged by the shell); tiled smaller to stay sharp
 };
 
 // Icons are decoded at a "tier": the pixel edge of the image kept in memory. A tier is never smaller than the
