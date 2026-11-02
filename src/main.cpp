@@ -86,6 +86,15 @@ std::string HandleRequest(std::string_view raw) {
         PostMessageW(g_window, WM_CLOSE, 0, 0);  // exit runs after this reply is sent
         return Reply(req, 0, self);
     }
+    if (t == ipc::msg::kOpenApps || t == ipc::msg::kCloseApps) {
+        // The pipe is pumped on the UI thread, so the panel can be driven directly.
+        if (!g_grid) return Reply(req, 501, {}, "apps panel unavailable");
+        if (t == ipc::msg::kOpenApps) { if (!g_grid->Visible()) g_grid->Show(); }
+        else g_grid->Hide();
+        json::Value p;
+        p.Set("visible", g_grid->Visible());
+        return Reply(req, 0, p);
+    }
 #ifdef VELORA_TESTING
     if (t == "debug_hang" && CurrentProfile().IsTest()) {
         // Test hook (never in production profile): freeze the UI thread so the
@@ -228,6 +237,15 @@ int ExitRunningShell() {
     return 0;
 }
 
+// `velora-shell --open-apps` / `--close-apps`: drive the Apps panel of the running shell (tests, no mouse).
+int SendAppsCommand(const char* type) {
+    std::string resp;
+    if (!ipc::Call(ShellPipeName(), ipc::MakeMessage("request", type, 1), &resp, 3000)) return 1;
+    auto r = json::Parse(resp);
+    const json::Value* s = r ? r->Find("status") : nullptr;
+    return s && s->AsInt(-1) == 0 ? 0 : 5;
+}
+
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
@@ -236,15 +254,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
     bool exitRequest = false, recoverOnly = false;
+    const char* appsCommand = nullptr;
     int argc = 0;
     if (LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc)) {
         for (int i = 1; i < argc; ++i) {
             if (std::wstring(argv[i]) == L"--exit") exitRequest = true;
             else if (std::wstring(argv[i]) == L"--recover-only") recoverOnly = true;
+            else if (std::wstring(argv[i]) == L"--open-apps") appsCommand = ipc::msg::kOpenApps;
+            else if (std::wstring(argv[i]) == L"--close-apps") appsCommand = ipc::msg::kCloseApps;
         }
         LocalFree(argv);
     }
     if (exitRequest) return ExitRunningShell();
+    if (appsCommand) return SendAppsCommand(appsCommand);
 
     if (CurrentProfile().IsTest() && DataDir().empty()) {
         log::Error("test profile without VELORA_DATA_DIR; refusing to start");

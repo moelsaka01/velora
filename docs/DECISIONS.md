@@ -93,3 +93,4 @@ One line per decision: date, decision, reason.
 - 2026-11-02: icons are fetched at the jumbo 256 px size (factory + SHDefExtractIcon) and Fant-downscaled to the tier; tile is a stronger top-to-bottom gradient with inner highlight/shade and the icon fills 86 % of the tile.
 - 2026-11-02: after the Apps panel closes (1.5 s settle) the shell drops IconStore pixels not used by the Dock, trims DXGI/D2D idle resources of Dock+menu bar, HeapCompact + SetProcessWorkingSetSize(-1,-1), and logs private/WS before/after ("memory trim" in velora-shell.log). Savings are estimates until the user's Get-Process shows them.
 - 2026-11-02: V menu > Settings opens ms-settings: until velora-settings reaches G1 (the exe is a stub).
+- 2026-11-02: IPC types open_apps / close_apps (CLI: velora-shell --open-apps / --close-apps) drive the Apps panel without a mouse for tests; additive, v1 stays compatible.
