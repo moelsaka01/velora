@@ -143,7 +143,7 @@ target_link_libraries(render_host_test PRIVATE velora_render)
 add_test(NAME render_host_test COMMAND render_host_test)
 
 # ui/: shared helpers for the shell UI (theme, DirectWrite, icon store). Owner B.
-add_library(velora_ui STATIC src/ui/ui_common.cpp)
+add_library(velora_ui STATIC src/ui/ui_common.cpp src/ui/icon_tile.cpp)
 target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32 windowscodecs)
 # The Dock's pure geometry and blur maths (no windows.h), shared with the wallpaper backdrop.
 add_library(velora_dock_layout STATIC src/dock/dock_layout.cpp)
@@ -181,6 +181,9 @@ target_link_libraries(velora_apps PUBLIC velora_ui velora_backdrop velora_core s
 add_executable(apps_test tests/apps_test.cpp)
 target_link_libraries(apps_test PRIVATE velora_apps)
 add_test(NAME apps_test COMMAND apps_test)
+add_executable(icon_tile_test tests/icon_tile_test.cpp)
+target_link_libraries(icon_tile_test PRIVATE velora_ui)
+add_test(NAME icon_tile_test COMMAND icon_tile_test)
 add_executable(icons_test tests/icons_test.cpp)
 target_link_libraries(icons_test PRIVATE velora_apps)
 add_test(NAME icons_test COMMAND icons_test)
