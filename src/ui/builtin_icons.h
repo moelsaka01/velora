@@ -8,7 +8,9 @@
 
 namespace velora::ui {
 
-enum class BuiltinIcon { None, Files, Settings, Terminal, CommandPrompt, Calculator, Camera, Clock, ControlPanel, Notepad, TaskManager };
+enum class BuiltinIcon { None, Files, Settings, Terminal, CommandPrompt, Calculator, Camera, Clock, ControlPanel, Notepad, TaskManager,
+                              CharacterMap, ComputerManagement, ComponentServices, DiskCleanup, EventViewer, RegistryEditor, Services,
+                              PowerShell, SnippingTool, Paint };
 
 // Which built-in icon stands in for `source` (an exe path, a .lnk path or "shell:AppsFolder\\<AppUserModelID>"), matched
 // on the AppUserModelID, the exe name or the shortcut's name. Pure; case-insensitive.

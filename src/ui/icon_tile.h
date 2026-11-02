@@ -8,7 +8,8 @@ namespace velora::ui {
 
 inline constexpr float kTileMargin = 0.03f;     // transparent border kept around the tile for its shadow
 inline constexpr float kTileContent = 0.86f;    // icon edge / tile edge when the icon is placed on a tile (fills the tile like macOS art)
-inline constexpr float kTileRadius = 0.227f;    // tokens::dock::kIconRadiusFraction (spec Dock icon radius)
+inline constexpr float kTileContentLowRes = 0.60f;  // same, for icons whose best native size is <= 48 px (no blur from enlarging)
+inline constexpr float kTileRadius = 0.227f;   // tokens::dock::kIconRadiusFraction (spec Dock icon radius)
 
 // Fraction (0..1) of the rounded-square area (radius kTileRadius, inset 2 %) that is opaque. A full-bleed app tile
 // scores ~1; a transparent glyph or a circle scores well below 0.9.
@@ -18,6 +19,11 @@ bool IsFilledTile(const Pixels& p);
 // `p` on the neutral tile (same size as `p`): tile with a vertical gradient and a soft shadow, the icon scaled to
 // kTileContent of the tile. Square input expected (the loader always yields tier x tier).
 Pixels ComposeOnTile(const Pixels& p);
+// True when `p` (>= 96 px) carries no more detail than a 48 px image enlarged: a 256 px image reduced to 48 and enlarged
+// again differs from itself by almost nothing.
+bool IsLowRes(const Pixels& p);
+// True when drawing `p` on a tile would show nothing: (almost) fully transparent, or near-white glyph pixels on the light tile.
+bool IsBlankIcon(const Pixels& p);
 // IsFilledTile ? unchanged : ComposeOnTile. Returns whether a tile was added.
 bool EnsureTile(Pixels* p);
 
