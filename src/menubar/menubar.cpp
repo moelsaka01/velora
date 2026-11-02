@@ -130,6 +130,7 @@ void MenuBar::Detach() {
     popup_.Close();
     KillTimer(hwnd_, kTimerClock);
     KillTimer(hwnd_, kTimerRedraw);
+    dirty_ = false;  // the popup's close callback may have asked for a redraw whose timer is now gone
     host_.Shutdown();
     hwnd_ = nullptr;
 }
