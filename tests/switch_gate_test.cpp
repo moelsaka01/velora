@@ -673,6 +673,22 @@ void PhaseSingleInstance() {
     EXPECT(TraysAll(true));
 }
 
+// Cold-start regression: Enter() stalls for 4 s between the watchdog's hello and the first heartbeat (steady-state timeout
+// is 2.5 s). The watchdog must allow for it instead of killing a healthy shell (the one-off "shell entered after recovery"
+// failures: exit code 1 = the watchdog's TerminateProcess).
+void PhaseSlowFirstBeat() {
+    g_phase = "slow-first-heartbeat";
+    ResetWorld();
+    SetEnvironmentVariableW(L"VELORA_TEST_ENTER_DELAY_MS", L"4000");
+    Session s = StartShell(20000);
+    SetEnvironmentVariableW(L"VELORA_TEST_ENTER_DELAY_MS", nullptr);
+    EXPECT(s.enterMs >= 4000, "shell entered after the slow Enter; " + (s.alive ? std::string("running") : "exited " + std::to_string(s.exitCode)));
+    EXPECT(s.shell.Alive(), "shell not killed by the watchdog");
+    RunToEnd(g_shellExe, L"--exit");
+    WaitExit(s.shell.h, 5000);
+    EXPECT(TraysAll(true));
+}
+
 void PhaseRestoreCli() {
     g_phase = "restore-cli";
 
@@ -1146,6 +1162,7 @@ int wmain(int argc, wchar_t** argv) {
     struct { const char* name; void (*fn)(); } phases[] = {
         {"dirty marker", PhaseDirtyMarker},      {"--restore CLI", PhaseRestoreCli},
         {"single instance", PhaseSingleInstance},
+        {"slow first heartbeat", PhaseSlowFirstBeat},
         {"emergency hotkey", PhaseEmergencyHotkey}, {"watchdog death", PhaseWatchdogDeath},
         {"hotkey unavailable", PhaseHotkeyUnavailable}, {"window-loss attribution", PhaseAttribution},
         {"watchdog lifecycle", PhaseWatchdogLifecycle}, {"restore correctness", PhaseRestoreCorrectness},
