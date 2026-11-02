@@ -55,6 +55,7 @@ public:
 
     void SetEffects(bool enabled);  // gaming mode: no backdrop blur
     bool Attached() const { return hwnd_ != nullptr; }
+    void Trim() { host_.Trim(); }
 
 private:
     bool OnMessage(HWND, UINT, WPARAM, LPARAM, LRESULT&);
