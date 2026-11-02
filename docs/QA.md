@@ -34,6 +34,7 @@ desktop with nothing unsaved, and know where `velora-watchdog.exe --restore` and
 - [ ] **(live)** Hovering the logo shows a fully rounded capsule (23 pt tall); clicking opens the drawn menu 4.5 pt under it: 24 pt rows, 201.5 pt wide, accent highlight with white text, hairline separators; Up/Down/Home/End/Enter/Esc work; clicking the logo again, clicking elsewhere or switching windows closes it; Sleep/Restart/Shut Down still ask first.
 - [ ] **(live)** The menu corners look acceptable (DWM draws 8 px; the measured 11 pt is not reproduced) and its fill is readable in light and dark mode.
 - [ ] **(live)** Apps panel: 843 pt wide glass panel (blurred wallpaper under a dark veil), search pill, 7 columns of 60 pt icons at 115 x 102 pt; opens with a spring (no overshoot), closes with the reverse spring on Esc / click outside; launching an app closes it at once. Check at 100 / 125 / 150 / 200 % and with transparency effects off (opaque dark fill).
+- [ ] **(live, bench)** `powershell -File tools\bench.ps1 -Runs 1 -GridSteps`: private bytes idle, with the Apps panel open and after closing it (prompts tell you when to open and close it); raw CSV in `bench/`.
 - [ ] **(live)** `velora.log` shows `apps grid: backdrop WxH px (1/N size), X ms` on each open (X should stay well under 100 ms).
 
 ## Wallpaper

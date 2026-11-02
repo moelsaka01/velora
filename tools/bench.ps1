@@ -10,6 +10,10 @@
   Prints median and range over the runs and writes the raw samples to bench/<stamp>_run<N>.csv plus a
   summary JSON. Defaults follow the spec (wait 2 min, sample 60 s, 3 runs).
 
+  With -GridSteps the script also pauses once per run so you can open the Apps panel (Velora menu > Apps) and close it
+  again, and samples 'grid-open' and 'grid-closed' phases (-GridSampleSec each) after the idle phase: private bytes
+  before / with the panel open / after closing it. Only reads process counters; nothing is injected or clicked for you.
+
   Known deviation: the script does not reboot the machine ("clean boot"); run it from a quiet desktop and
   read the numbers as measured on that desktop, not as a lab figure. Close the on-demand apps first.
 
@@ -21,6 +25,8 @@ param(
     [int]$Runs = 3,
     [int]$WaitSec = 120,
     [int]$SampleSec = 60,
+    [switch]$GridSteps,
+    [int]$GridSampleSec = 20,
     [string]$OutDir = (Join-Path $PSScriptRoot '..\bench')
 )
 
@@ -88,6 +94,13 @@ for ($run = 1; $run -le $Runs; $run++) {
     Start-Sleep -Seconds $WaitSec
     $ids = @($proc.Id) + @((Get-Process velora-watchdog -ErrorAction SilentlyContinue).Id)
     Sample-Phase 'velora' $SampleSec $ids $rows
+    if ($GridSteps) {
+        Read-Host 'Open the Apps panel now (Velora menu > Apps), wait until the icons are in, then press Enter here' | Out-Null
+        Sample-Phase 'grid-open' $GridSampleSec $ids $rows
+        Read-Host 'Close the Apps panel (Esc), then press Enter here' | Out-Null
+        Start-Sleep -Seconds 5
+        Sample-Phase 'grid-closed' $GridSampleSec $ids $rows
+    }
 
     $sw.Restart()
     # `Start-Process -Wait` adds ~600 ms of its own (measured: 1030 ms vs 400 ms with PassThru + WaitForExit), so wait on
@@ -108,6 +121,8 @@ for ($run = 1; $run -le $Runs; $run++) {
         committedDeltaMB = [math]::Round(($withVel - $baseline) / 1MB, 1)
         shellPlusWatchdogPrivateMB = [math]::Round((Median ($v.velPrivateBytes)) / 1MB, 1)
         shellPlusWatchdogWorkingSetMB = [math]::Round((Median ($v.velWorkingSetBytes)) / 1MB, 1)
+        gridOpenPrivateMB = $(if ($GridSteps) { [math]::Round((Median (($rows | Where-Object phase -eq 'grid-open').velPrivateBytes)) / 1MB, 1) } else { $null })
+        gridClosedPrivateMB = $(if ($GridSteps) { [math]::Round((Median (($rows | Where-Object phase -eq 'grid-closed').velPrivateBytes)) / 1MB, 1) } else { $null })
         idleCpuPercent = [math]::Round((Median ($v.velCpuPercent)), 3)
         gpuLocalMB = $(if ($v[0].gpuLocalBytes -ne $null) { [math]::Round((Median ($v.gpuLocalBytes)) / 1MB, 1) } else { $null })
         csv = $csv
@@ -116,7 +131,7 @@ for ($run = 1; $run -le $Runs; $run++) {
 }
 
 $summary | Format-Table -AutoSize
-foreach ($m in 'enterMs', 'exitMs', 'committedDeltaMB', 'shellPlusWatchdogPrivateMB', 'shellPlusWatchdogWorkingSetMB', 'idleCpuPercent', 'gpuLocalMB') {
+foreach ($m in 'enterMs', 'exitMs', 'committedDeltaMB', 'shellPlusWatchdogPrivateMB', 'shellPlusWatchdogWorkingSetMB', 'gridOpenPrivateMB', 'gridClosedPrivateMB', 'idleCpuPercent', 'gpuLocalMB') {
     $vals = @($summary | ForEach-Object { $_.$m } | Where-Object { $null -ne $_ })
     if ($vals.Count) { '{0,-32} median {1}  range {2} .. {3}' -f $m, (Median $vals), ($vals | Measure-Object -Minimum).Minimum, ($vals | Measure-Object -Maximum).Maximum }
 }
