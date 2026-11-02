@@ -29,6 +29,13 @@ desktop with nothing unsaved, and know where `velora-watchdog.exe --restore` and
 - [ ] **(live)** Launch a Win32 app, a Store app and a shortcut-only app from the grid.
 - [ ] After closing, memory returns (see bench); opening again does not rescan (log shows no new "apps:" scan lines).
 
+### Phase 3 visual check (menu bar, Velora menu, Apps panel) - guided, McAfee off, non-elevated PowerShell
+- [ ] **(live)** The bar is 30 pt tall, text is Inter 13 pt, titles and right-hand items are 21.75 pt apart, no line under the bar, text readable on a light and a dark wallpaper (the veil is a working value).
+- [ ] **(live)** Hovering the logo shows a fully rounded capsule (23 pt tall); clicking opens the drawn menu 4.5 pt under it: 24 pt rows, 201.5 pt wide, accent highlight with white text, hairline separators; Up/Down/Home/End/Enter/Esc work; clicking the logo again, clicking elsewhere or switching windows closes it; Sleep/Restart/Shut Down still ask first.
+- [ ] **(live)** The menu corners look acceptable (DWM draws 8 px; the measured 11 pt is not reproduced) and its fill is readable in light and dark mode.
+- [ ] **(live)** Apps panel: 843 pt wide glass panel (blurred wallpaper under a dark veil), search pill, 7 columns of 60 pt icons at 115 x 102 pt; opens with a spring (no overshoot), closes with the reverse spring on Esc / click outside; launching an app closes it at once. Check at 100 / 125 / 150 / 200 % and with transparency effects off (opaque dark fill).
+- [ ] **(live)** `velora.log` shows `apps grid: backdrop WxH px (1/N size), X ms` on each open (X should stay well under 100 ms).
+
 ## Wallpaper
 - [ ] **(live)** On enter every monitor shows the Velora wallpaper (dark theme: deep blue/violet, light theme: pastel); no banding visible.
 - [ ] Exit restores the previous wallpaper on every monitor, including a different one per monitor.

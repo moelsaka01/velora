@@ -145,6 +145,15 @@ add_test(NAME render_host_test COMMAND render_host_test)
 # ui/: shared helpers for the shell UI (theme, DirectWrite, icon store). Owner B.
 add_library(velora_ui STATIC src/ui/ui_common.cpp)
 target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32 windowscodecs)
+# The Dock's pure geometry and blur maths (no windows.h), shared with the wallpaper backdrop.
+add_library(velora_dock_layout STATIC src/dock/dock_layout.cpp)
+target_link_libraries(velora_dock_layout PUBLIC velora_tokens)
+# Blurred-wallpaper material for the Dock shelf and the Apps panel.
+add_library(velora_backdrop STATIC src/ui/backdrop.cpp)
+target_link_libraries(velora_backdrop PUBLIC velora_ui velora_wallpaper velora_dock_layout windowscodecs)
+add_executable(backdrop_test tests/backdrop_test.cpp)
+target_link_libraries(backdrop_test PRIVATE velora_backdrop)
+add_test(NAME backdrop_test COMMAND backdrop_test)
 add_executable(velora_icon_test tests/velora_icon_test.cpp src/shell.rc)
 target_link_libraries(velora_icon_test PRIVATE velora_ui)
 add_test(NAME velora_icon_test COMMAND velora_icon_test)
@@ -168,7 +177,7 @@ add_test(NAME debounce_test COMMAND debounce_test)
 
 # apps/: installed-app index (AppsFolder + Start-menu shortcuts, cached) and the full-screen grid. Owner B.
 add_library(velora_apps STATIC src/apps/app_index.cpp src/apps/apps_grid.cpp)
-target_link_libraries(velora_apps PUBLIC velora_ui velora_core shell32 ole32 propsys)
+target_link_libraries(velora_apps PUBLIC velora_ui velora_backdrop velora_core shell32 ole32 propsys)
 add_executable(apps_test tests/apps_test.cpp)
 target_link_libraries(apps_test PRIVATE velora_apps)
 add_test(NAME apps_test COMMAND apps_test)
@@ -177,8 +186,8 @@ target_link_libraries(icons_test PRIVATE velora_apps)
 add_test(NAME icons_test COMMAND icons_test)
 
 # dock/: the Dock pill in the bottom appbar. Owner B.
-add_library(velora_dock STATIC src/dock/dock.cpp src/dock/dock_model.cpp src/dock/dock_layout.cpp)
-target_link_libraries(velora_dock PUBLIC velora_apps velora_ui velora_switch velora_windows velora_core velora_wallpaper windowscodecs)
+add_library(velora_dock STATIC src/dock/dock.cpp src/dock/dock_model.cpp)
+target_link_libraries(velora_dock PUBLIC velora_apps velora_backdrop velora_dock_layout velora_ui velora_switch velora_windows velora_core velora_wallpaper windowscodecs)
 add_executable(dock_test tests/dock_test.cpp)
 target_link_libraries(dock_test PRIVATE velora_dock)
 add_test(NAME dock_test COMMAND dock_test)
