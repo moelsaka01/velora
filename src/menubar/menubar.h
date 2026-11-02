@@ -1,6 +1,6 @@
 // Global menu bar drawn into the top appbar (CLAUDE.md sec. 5 menubar G1). Owner: B.
 //
-// G1: Velora menu (About, Settings, Apps, Sleep / Restart / Shut Down with confirm, Exit Velora),
+// G1: Velora menu (drawn by menubar/menu_popup: About, Settings, Apps, Sleep / Restart / Shut Down with confirm, Exit Velora),
 // active app name, status items (battery) and the clock. Light/dark follows the system
 // theme. App menus (G2) and per-monitor bars (G3) are not built.
 //
@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "core/event_bus.h"
+#include "menubar/menu_popup.h"
 #include "render/render_host.h"
 #include "switch/appbar.h"
 #include "windows/window_tracker.h"
@@ -64,6 +65,7 @@ private:
     void RefreshStatus();
     void ArmClock();
     void ShowVeloraMenu();
+    void RunCommand(unsigned cmd);
     std::wstring ActiveAppName();
     void OnWindowEvent();
 
@@ -86,6 +88,8 @@ private:
     std::vector<std::pair<std::wstring, D2D1_RECT_F>> rightItems_;
     bool hoverLogo_ = false;
     bool menuOpen_ = false;
+    MenuPopup popup_;
+    ULONGLONG popupClosedAt_ = 0;  // a click on the logo right after the popup closed itself must not reopen it
 };
 
 }  // namespace velora::menubar

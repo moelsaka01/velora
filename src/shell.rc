@@ -1,5 +1,6 @@
 // Resources of velora-shell: the Velora app icon (256 px derivative of assets/icon.png, scaled to the
-// Dock's device pixels at run time).
+// Dock's device pixels at run time) and the Inter UI font (assets/fonts, SIL OFL 1.1).
 #include "ui/resource_ids.h"
 
 IDR_VELORA_ICON RCDATA "../assets/icon_256.png"
+IDR_INTER_FONT RCDATA "../assets/fonts/InterVariable.ttf"

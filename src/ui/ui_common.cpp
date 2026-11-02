@@ -2,6 +2,7 @@
 
 #include <commctrl.h>
 #include <commoncontrols.h>
+#include <dwrite_3.h>
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
@@ -61,6 +62,55 @@ IDWriteFactory* DWrite() {
     return factory.Get();
 }
 
+namespace {
+
+// Inter (SIL OFL 1.1, assets/fonts) is linked into the executable as an RCDATA resource (src/shell.rc) and exposed to
+// DirectWrite as an in-memory font collection: nothing is installed on the machine. Without the resource (tests, other
+// executables) or without DirectWrite 1.3 the collection stays null and Format() uses Segoe UI.
+struct BundledFont {
+    ComPtr<IDWriteFontCollection> collection;
+    std::wstring family;
+};
+
+const BundledFont& Bundled() {
+    static const BundledFont font = [] {
+        BundledFont r;
+        HRSRC res = FindResourceW(nullptr, MAKEINTRESOURCEW(IDR_INTER_FONT), RT_RCDATA);
+        HGLOBAL mem = res ? LoadResource(nullptr, res) : nullptr;
+        const void* data = mem ? LockResource(mem) : nullptr;
+        DWORD size = res ? SizeofResource(nullptr, res) : 0;
+        if (!data || !size || !DWrite()) return r;
+        ComPtr<IDWriteFactory5> f5;
+        if (FAILED(DWrite()->QueryInterface(IID_PPV_ARGS(&f5)))) return r;
+        ComPtr<IDWriteInMemoryFontFileLoader> loader;
+        if (FAILED(f5->CreateInMemoryFontFileLoader(&loader)) || FAILED(f5->RegisterFontFileLoader(loader.Get()))) return r;
+        ComPtr<IDWriteFontFile> file;
+        ComPtr<IDWriteFontSetBuilder1> builder;
+        ComPtr<IDWriteFontSet> set;
+        ComPtr<IDWriteFontCollection1> coll;
+        if (FAILED(loader->CreateInMemoryFontFileReference(f5.Get(), data, size, nullptr, &file)) ||
+            FAILED(f5->CreateFontSetBuilder(&builder)) || FAILED(builder->AddFontFile(file.Get())) ||
+            FAILED(builder->CreateFontSet(&set)) || FAILED(f5->CreateFontCollectionFromFontSet(set.Get(), &coll)) ||
+            coll->GetFontFamilyCount() == 0) {
+            log::Warn("ui: the bundled font could not be loaded; using Segoe UI");
+            return r;
+        }
+        ComPtr<IDWriteFontFamily> family;
+        ComPtr<IDWriteLocalizedStrings> names;
+        wchar_t buf[128] = {};
+        if (FAILED(coll->GetFontFamily(0, &family)) || FAILED(family->GetFamilyNames(&names)) || FAILED(names->GetString(0, buf, 128)))
+            return r;
+        r.family = buf;
+        r.collection = coll;
+        return r;
+    }();
+    return font;
+}
+
+}  // namespace
+
+const std::wstring& BundledFontFamily() { return Bundled().family; }
+
 IDWriteTextFormat* Format(float sizeDip, DWRITE_FONT_WEIGHT weight) {
     static std::map<std::pair<int, int>, ComPtr<IDWriteTextFormat>> cache;
     auto key = std::make_pair(static_cast<int>(sizeDip * 10), static_cast<int>(weight));
@@ -68,10 +118,17 @@ IDWriteTextFormat* Format(float sizeDip, DWRITE_FONT_WEIGHT weight) {
     IDWriteFactory* f = DWrite();
     if (!f) return nullptr;
     ComPtr<IDWriteTextFormat> fmt;
-    for (const wchar_t* family : {L"Segoe UI Variable Text", L"Segoe UI"}) {
-        if (SUCCEEDED(f->CreateTextFormat(family, nullptr, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
-                                          sizeDip, L"", &fmt)))
-            break;
+    const BundledFont& bundled = Bundled();
+    if (bundled.collection &&
+        FAILED(f->CreateTextFormat(bundled.family.c_str(), bundled.collection.Get(), weight, DWRITE_FONT_STYLE_NORMAL,
+                                   DWRITE_FONT_STRETCH_NORMAL, sizeDip, L"", &fmt)))
+        fmt.Reset();
+    if (!fmt) {
+        for (const wchar_t* family : {L"Segoe UI Variable Text", L"Segoe UI"}) {
+            if (SUCCEEDED(f->CreateTextFormat(family, nullptr, weight, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL,
+                                              sizeDip, L"", &fmt)))
+                break;
+        }
     }
     if (!fmt) return nullptr;
     fmt->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);

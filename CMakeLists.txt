@@ -148,13 +148,19 @@ target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version 
 add_executable(velora_icon_test tests/velora_icon_test.cpp src/shell.rc)
 target_link_libraries(velora_icon_test PRIVATE velora_ui)
 add_test(NAME velora_icon_test COMMAND velora_icon_test)
+add_executable(font_test tests/font_test.cpp src/shell.rc)
+target_link_libraries(font_test PRIVATE velora_ui)
+add_test(NAME font_test COMMAND font_test)
 
 # menubar/: global menu bar drawn into the top appbar. Owner B.
-add_library(velora_menubar STATIC src/menubar/menubar.cpp)
+add_library(velora_menubar STATIC src/menubar/menubar.cpp src/menubar/menu_layout.cpp src/menubar/menu_popup.cpp)
 target_link_libraries(velora_menubar PUBLIC velora_ui velora_switch velora_windows velora_version powrprof)
 add_executable(menubar_test tests/menubar_test.cpp)
 target_link_libraries(menubar_test PRIVATE velora_menubar)
 add_test(NAME menubar_test COMMAND menubar_test)
+add_executable(menu_layout_test tests/menu_layout_test.cpp)
+target_link_libraries(menu_layout_test PRIVATE velora_menubar)
+add_test(NAME menu_layout_test COMMAND menu_layout_test)
 
 add_executable(debounce_test tests/debounce_test.cpp)
 target_link_libraries(debounce_test PRIVATE velora_contracts)

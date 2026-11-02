@@ -25,7 +25,7 @@ inline constexpr float k1 = 2.0f, k2 = 4.0f, k3 = 8.0f, k4 = 12.0f,
 }  // namespace spacing
 
 namespace size {
-inline constexpr float kMenuBarHeight   = 28.0f;
+inline constexpr float kMenuBarHeight   = 30.0f;  // spec derives ~29 (notch Air reserves 31); Velora targets 30
 inline constexpr float kDockIcon        = 44.0f;  // measured, docs/MACOS_UI_SPEC.md "Dock"
 inline constexpr float kDockIconMax     = 74.8f;  // kDockIcon x kMagnifyPeak
 inline constexpr float kDockPadding     = 15.0f;
@@ -49,6 +49,27 @@ inline constexpr float kVeilAlphaLight = 0.31f, kVeilAlphaDark = 0.38f;
 inline constexpr float kVeilAlphaUnblurred = 0.58f;  // when there is no backdrop to blur: stay legible
 inline constexpr float kBlurSigma = 12.0f;            // DIPs
 }  // namespace dock
+
+// Menu bar and menus (docs/MACOS_UI_SPEC.md, "Menu bar and menus"; measured from public screenshots).
+namespace menu {
+inline constexpr float kFontSize     = 13.0f;
+inline constexpr float kTitleGap     = 21.75f;   // text to text between titles / status items
+inline constexpr float kCapsuleHeight = 23.0f;   // selected-title capsule (fully rounded)
+inline constexpr float kCapsulePadX  = 15.0f;    // capsule edge to label
+inline constexpr float kPopupWidth   = 201.5f;
+inline constexpr float kPopupPadding = 5.0f;     // popup edge to highlight
+inline constexpr float kRowHeight    = 24.0f;
+inline constexpr float kSeparatorHeight = 11.0f; // 5.5 above + 5.5 below the hairline (group pitch 35 = 24 + 11)
+inline constexpr float kHighlightRadius = 6.0f;
+inline constexpr float kPopupRadius  = 11.0f;
+inline constexpr float kPopupGap     = 4.5f;     // bar bottom (capsule bottom) to popup top
+inline constexpr float kRowTextInset = 10.0f;    // highlight edge to label (working value, not measured)
+// Bar veil: the spec's bar is fully transparent with white text; over an arbitrary wallpaper that is unreadable, so Velora keeps a
+// light veil over the DWM backdrop (working values, not measured).
+inline constexpr std::uint32_t kBarVeilLight = 0x40F5F5F7, kBarVeilDark = 0x59242426;
+// Popup: white-ish fill at about 77 % over a blur (light, measured, low confidence); dark is an estimate.
+inline constexpr std::uint32_t kPopupFillLight = 0xC4F8F8FA, kPopupFillDark = 0xC4262628;
+}  // namespace menu
 
 // Blur radius (DIPs) for backdrop effects. Gaming mode forces blur off.
 namespace blur {
