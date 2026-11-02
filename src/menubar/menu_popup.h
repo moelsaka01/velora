@@ -10,6 +10,8 @@
 #include <vector>
 
 #include "menubar/menu_layout.h"
+#include <wrl/client.h>
+
 #include "render/render_host.h"
 
 namespace velora::menubar {
@@ -38,6 +40,8 @@ private:
     HWND hwnd_ = nullptr;
     UINT dpi_ = 96;
     render::RenderHost host_;
+    Microsoft::WRL::ComPtr<ID2D1Bitmap> wall_;  // blurred wallpaper behind the popup (null until drawn / no image)
+    bool translucent_ = false;
     std::vector<MenuItem> items_;
     MenuLayout layout_;
     int selected_ = -1;
