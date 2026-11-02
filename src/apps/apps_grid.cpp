@@ -108,7 +108,7 @@ void AppsGrid::Show() {
     Refilter();
     listener_ = ui::IconStore::Get().AddListener([this] { OnDataChanged(); });
 
-    closing_ = closeDone_ = false;
+    closing_ = closeDone_ = wallTried_ = false;  // the backdrop is rebuilt on every open (the wallpaper may have changed)
     StartOpen();
     ShowWindow(hwnd_, SW_SHOW);
     SetForegroundWindow(hwnd_);
@@ -142,6 +142,7 @@ void AppsGrid::Close() {
 void AppsGrid::Hide() {
     if (!hwnd_) return;
     ui::IconStore::Get().RemoveListener(listener_);
+    anim_.Cancel(spring_);  // a spring still running (closed mid-open) must not drive the next open
     HWND h = hwnd_;
     hwnd_ = nullptr;  // before DestroyWindow: WM_ACTIVATE during teardown must not re-enter
     if (timerOn_) KillTimer(h, kTimerFrame);
