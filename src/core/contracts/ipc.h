@@ -46,6 +46,8 @@ inline constexpr char kDisarm[]       = "disarm";
 inline constexpr char kRestore[]      = "restore";
 inline constexpr char kOpenApp[]      = "open_app";    // files/settings -> shell
 inline constexpr char kSettingsChanged[] = "settings_changed";
+inline constexpr char kOpenApps[]     = "open_apps";   // CLI/tests -> shell: show the Apps panel
+inline constexpr char kCloseApps[]    = "close_apps";  // CLI/tests -> shell: hide the Apps panel
 }  // namespace msg
 
 }  // namespace velora::ipc
