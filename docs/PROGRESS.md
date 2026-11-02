@@ -13,7 +13,7 @@ Status: not started | in progress | gated | passed | deferred
 | overview | not started | |
 | apps | gated (G1 built) | AppsFolder + Start-menu index (191 apps here), cached, background refresh; grid with search drawn live with real icons; apps_test. **Launching from the grid not exercised live**; pages/folders (G2) not built |
 | wallpaper | passed (1 monitor) | procedural original wallpaper, per monitor, backup + restore on exit and crash recovery verified live (1 monitor, developer path override); wallpaper_test. Multi-monitor unmeasured |
-| search | not started | |
+| search | gated (G1 built) | Spotlight-style panel in the shell (520 pt pill, results panel with Applications / Folders / Documents / Images / Music / Videos / Other Files sections, spring open/close): apps from the app index, files from the Windows Search OLE DB provider on a worker thread (debounced 120 ms), keyboard-only flow (type, Up/Down, Enter opens, Ctrl+Enter reveals in Files, Esc closes), global hotkey via RegisterHotKey (settings.json `search.hotkey`; default Alt+Space only if free, else Ctrl+Space; none in the test profile), Velora menu > Search, `velora-shell --open-search [query]` / `--close-search`. Windows Search disabled or silent: apps only, with a visible note. `search_core_test`, `search_test` (53 checks incl. the real index: 10 hits for "windows" on this machine, disabled/silent index simulated). **Not yet seen on screen**; calculator, unit conversion, settings entries and Everything are G2 |
 | control | not started | |
 | notify | not started | |
 | desktops | not started | |

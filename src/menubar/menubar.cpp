@@ -26,7 +26,7 @@ constexpr UINT_PTR kTimerWallpaper = 3;  // one shot after attach: Velora applie
 constexpr float kPad = 14.0f;
 namespace tm = velora::tokens::menu;
 
-enum Cmd : UINT { kAbout = 1, kSettings, kApps, kSleep, kRestart, kShutDown, kExit };
+enum Cmd : UINT { kAbout = 1, kSettings, kApps, kSearch, kSleep, kRestart, kShutDown, kExit };
 
 bool EnableShutdownPrivilege() {
     HANDLE token = nullptr;
@@ -311,7 +311,7 @@ void MenuBar::Draw() {
 void MenuBar::ShowVeloraMenu() {
     std::vector<MenuItem> items = {
         {kAbout, L"About Velora"}, Separator(),
-        {kSettings, L"Settings\u2026"}, {kApps, L"Apps"}, Separator(),
+        {kSettings, L"Settings\u2026"}, {kApps, L"Apps"}, {kSearch, L"Search"}, Separator(),
         {kSleep, L"Sleep"}, {kRestart, L"Restart\u2026"}, {kShutDown, L"Shut Down\u2026"}, Separator(),
         {kExit, L"Exit Velora"},
     };
@@ -349,6 +349,9 @@ void MenuBar::RunCommand(unsigned cmd) {
             break;
         case kApps:
             if (actions_.openApps) actions_.openApps();
+            break;
+        case kSearch:
+            if (actions_.openSearch) actions_.openSearch();
             break;
         case kSleep:
             if (Confirm(hwnd_, L"Put this computer to sleep?")) DoSleep();
