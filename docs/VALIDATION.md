@@ -21,3 +21,5 @@ Physical and live checks per module, seeded from the evidence in [PROGRESS.md](P
 | installer / updates | none | install, upgrade, rollback, uninstall runs `--restore` first |
 
 Update this table in the same PR that changes a module's evidence in PROGRESS.md.
+
+**Open flake (unresolved):** switch_gate "shell entered after recovery" (dirty-marker phase, first shell start; 2/~10 CI runs). Root cause unproven; see BACKLOG.md. Pending: next occurrence's exit state and log tail.
