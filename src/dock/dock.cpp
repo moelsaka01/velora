@@ -385,6 +385,13 @@ int Dock::HitItem(float x, float y) const {
     return -1;
 }
 
+std::set<std::wstring> Dock::IconSources() const {
+    std::set<std::wstring> out;
+    for (const auto& it : items_)
+        if (!it.app.icon.empty()) out.insert(it.app.icon);
+    return out;
+}
+
 ID2D1Bitmap* Dock::BitmapFor(ID2D1DeviceContext* dc, const std::wstring& icon) {
     if (icon.empty()) return nullptr;
     if (auto it = bitmaps_.find(icon); it != bitmaps_.end()) return it->second.Get();

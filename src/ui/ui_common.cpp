@@ -4,6 +4,7 @@
 #include <commoncontrols.h>
 #include <dwrite_3.h>
 #include <shellapi.h>
+#include <psapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <wincodec.h>
@@ -635,6 +636,35 @@ void IconStore::RemoveListener(int token) { impl_->listeners.erase(token); }
 void IconStore::Dispatch() {
     auto copy = impl_->listeners;
     for (auto& [t, fn] : copy) fn();
+}
+
+size_t IconStore::Trim(const std::set<std::wstring>& keep) {
+    size_t bytes = 0;
+    std::lock_guard lock(impl_->mutex);
+    for (auto it = impl_->done.begin(); it != impl_->done.end();) {
+        if (keep.count(it->first.first)) { ++it; continue; }
+        bytes += it->second->bgra.size();
+        impl_->requested.erase(it->first);
+        it = impl_->done.erase(it);
+    }
+    for (auto it = impl_->failures.begin(); it != impl_->failures.end();)
+        it = keep.count(it->first.first) ? std::next(it) : impl_->failures.erase(it);
+    return bytes;
+}
+
+void TrimProcessMemory(const char* reason) {
+    auto snap = [] {
+        PROCESS_MEMORY_COUNTERS_EX m{sizeof m};
+        GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&m), sizeof m);
+        return m;
+    };
+    const auto before = snap();
+    HeapCompact(GetProcessHeap(), 0);
+    SetProcessWorkingSetSize(GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1));
+    const auto after = snap();
+    log::Info(std::string("memory trim (") + reason + "): private " + std::to_string(before.PrivateUsage >> 20) + " -> " +
+              std::to_string(after.PrivateUsage >> 20) + " MB, working set " + std::to_string(before.WorkingSetSize >> 20) + " -> " +
+              std::to_string(after.WorkingSetSize >> 20) + " MB");
 }
 
 void IconStore::Shutdown() {
