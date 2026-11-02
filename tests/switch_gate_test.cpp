@@ -598,8 +598,7 @@ void LeaveCrashDebris(DWORD pid, std::uint64_t startTime) {
 std::string LogTail(size_t n) {
     std::string log = ReadFileText(g_dataDir / "logs" / "velora-shell.log");
     size_t pos = log.size();
-    for (size_t i = 0; i <= n && pos != std::string::npos && pos > 0; ++i) pos = log.rfind('
-', pos - 1);
+    for (size_t i = 0; i <= n && pos != std::string::npos && pos > 0; ++i) pos = log.rfind('\n', pos - 1);
     return pos == std::string::npos ? log : log.substr(pos + 1);
 }
 
@@ -625,8 +624,7 @@ void PhaseDirtyMarker() {
     // fresh CI VM), and the phase is about recovery order, not enter latency (the cycles phase measures that).
     Session s = StartShell(30000);
     EXPECT(s.enterMs >= 0, "shell entered after recovery; " + (s.alive ? std::string("still running") : "exited " + std::to_string(s.exitCode)) +
-                               "; log tail:
-" + LogTail(12));
+                               "; log tail:\n" + LogTail(12));
     RunToEnd(g_shellExe, L"--exit");
     WaitExit(s.shell.h, 5000);
     std::string log = ReadFileText(g_dataDir / "logs" / "velora-shell.log");
