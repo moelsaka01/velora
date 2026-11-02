@@ -150,6 +150,8 @@ bool SwitchManager::Enter() {
         return false;
     }
 
+    if (afterWatchdogHook_) afterWatchdogHook_();  // tests only (set under VELORA_TESTING in main.cpp)
+
     // 3. Hide the taskbars; if Explorer still reserves space for them, fall back to auto-hide.
     SetTaskbarsVisible(false);
     if (!WaitTaskbarsVisible(false, 1000)) log::Warn("enter: taskbar windows did not hide within 1 s");

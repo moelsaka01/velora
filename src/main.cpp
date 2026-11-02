@@ -283,14 +283,23 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     sw::SwitchManager manager(bus, instance);
     manager.SetFatalHandler([] { PostMessageW(g_window, WM_CLOSE, 0, 0); });
     g_manager = &manager;
+#ifdef VELORA_TESTING
+    if (CurrentProfile().IsTest()) {
+        // A slow Enter between the watchdog's hello and the first heartbeat (cold-start stand-in), see switch_gate.
+        wchar_t v[16] = {};
+        if (GetEnvironmentVariableW(L"VELORA_TEST_ENTER_DELAY_MS", v, 16))
+            manager.SetAfterWatchdogHook([ms = static_cast<DWORD>(_wtoi(v))] { Sleep(ms); });
+    }
+#endif
     ui::IconStore::Get().SetNotifyWindow(g_window);
 
     win::WindowTracker tracker(bus);
     menubar::MenuBar::Actions menuActions;
     menuActions.exitVelora = [] { PostMessageW(g_window, WM_CLOSE, 0, 0); };
     menuActions.openSettings = [] {
-        auto exe = ExeDir() / L"velora-settings.exe";
-        ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        // velora-settings.exe is a stub until Settings reaches G1 (docs/PROGRESS.md): open Windows Settings meanwhile.
+        // Switch back to ExeDir() / L"velora-settings.exe" when the app ships.
+        ShellExecuteW(nullptr, L"open", L"ms-settings:", nullptr, nullptr, SW_SHOWNORMAL);
     };
     apps::AppsGrid grid(instance);
     g_grid = &grid;
