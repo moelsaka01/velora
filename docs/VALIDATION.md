@@ -22,4 +22,4 @@ Physical and live checks per module, seeded from the evidence in [PROGRESS.md](P
 
 Update this table in the same PR that changes a module's evidence in PROGRESS.md.
 
-**Open flake (unresolved):** switch_gate "shell entered after recovery" (dirty-marker phase, first shell start; 2/~10 CI runs). Root cause unproven; see BACKLOG.md. Pending: next occurrence's exit state and log tail.
+**Resolved (#58):** the switch_gate first-shell-start flake ("shell entered after recovery") was the watchdog's 2.5 s heartbeat timeout armed at the shell's hello, before a slow cold-start Enter() could send its first heartbeat; the watchdog killed a healthy shell (exit code 1). Fixed with a 10 s allowance until the first heartbeat; the slow-first-heartbeat gate phase reproduces it deterministically.
