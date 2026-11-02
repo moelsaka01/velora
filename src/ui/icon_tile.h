@@ -1,4 +1,4 @@
-// Icon tiles (macOS 27 style): an icon that is not already a filled rounded square is drawn at ~80 % on a neutral
+// Icon tiles (macOS 27 style): an icon that is not already a filled rounded square is drawn at ~86 % on a neutral
 // rounded-square tile. Pure software on premultiplied BGRA, no COM, so it is unit-testable.
 #pragma once
 
@@ -7,7 +7,7 @@
 namespace velora::ui {
 
 inline constexpr float kTileMargin = 0.03f;     // transparent border kept around the tile for its shadow
-inline constexpr float kTileContent = 0.80f;    // icon edge / tile edge when the icon is placed on a tile
+inline constexpr float kTileContent = 0.86f;    // icon edge / tile edge when the icon is placed on a tile (fills the tile like macOS art)
 inline constexpr float kTileRadius = 0.227f;    // tokens::dock::kIconRadiusFraction (spec Dock icon radius)
 
 // Fraction (0..1) of the rounded-square area (radius kTileRadius, inset 2 %) that is opaque. A full-bleed app tile

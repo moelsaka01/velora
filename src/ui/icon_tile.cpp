@@ -19,7 +19,7 @@ float Smooth(float t) {
 }
 
 // Tile colours (straight, 0..1): a light neutral that reads on the glass in both themes.
-constexpr float kTop[3] = {0.965f, 0.965f, 0.973f}, kBottom[3] = {0.870f, 0.870f, 0.890f};
+constexpr float kTop[3] = {0.996f, 0.996f, 1.000f}, kBottom[3] = {0.835f, 0.840f, 0.862f};
 
 }  // namespace
 
@@ -62,10 +62,19 @@ Pixels ComposeOnTile(const Pixels& src) {
             const float cover = std::clamp(0.5f - d, 0.0f, 1.0f);
             if (cover > 0) {
                 const float t = std::clamp((py - margin) / (h - 2 * margin), 0.0f, 1.0f);
-                float rim = 0.0f;
-                if (d > -1.5f * w / 256.0f - 0.5f && py < h / 2) rim = 0.5f;  // top rim highlight
+                // Inner highlight: a thin bright ring just inside the edge, strongest at the top and gone by mid-height;
+                // inner shade: the bottom edge sinks a little.
+                const float ringW = std::max(1.0f, 0.012f * w);
+                const float edge = std::clamp(1.0f + d / ringW, 0.0f, 1.0f);  // 1 at the edge, 0 ringW inside
+                const float hi = edge * std::clamp(1.0f - t * 2.2f, 0.0f, 1.0f);
+                const float sh = edge * std::clamp((t - 0.7f) * 3.3f, 0.0f, 1.0f);
                 float tc[3];
-                for (int i = 0; i < 3; ++i) tc[i] = std::min(1.0f, kTop[i] + (kBottom[i] - kTop[i]) * t + rim * 0.03f);
+                for (int i = 0; i < 3; ++i) {
+                    float v = kTop[i] + (kBottom[i] - kTop[i]) * t;
+                    v = v + (1.0f - v) * 0.85f * hi;  // toward white
+                    v = v * (1.0f - 0.07f * sh);      // toward grey
+                    tc[i] = std::clamp(v, 0.0f, 1.0f);
+                }
                 for (int i = 0; i < 3; ++i) c[i] = c[i] * (1 - cover) + tc[i] * cover;
                 a = a * (1 - cover) + cover;
             }

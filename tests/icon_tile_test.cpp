@@ -74,7 +74,7 @@ int main() {
     CHECK(body[3] == 255 && body[0] > 200 && body[1] > 200 && body[2] > 200);
     const std::uint8_t* mid = At(t, n / 2, n / 2);
     CHECK(mid[3] == 255 && mid[2] > 240 && mid[1] < 20 && mid[0] < 20);  // red glyph on top
-    // The glyph disc radius is 0.25 n; at 80 % of the tile it is ~0.19 n: a pixel at 0.23 n is tile again.
+    // The glyph disc radius is 0.25 n; at 86 % of the tile it is ~0.20 n: a pixel at 0.23 n is tile again.
     const std::uint8_t* ring = At(t, n / 2 + static_cast<int>(n * 0.23), n / 2);
     CHECK(ring[2] > 200 && ring[1] > 200);
     // Tile is lighter at the top than at the bottom (gradient), and the shadow lies below it.

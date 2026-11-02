@@ -299,7 +299,8 @@ bool ScaleTo(Pixels* p, int px) {
         FAILED(wic->CreateBitmapFromMemory(static_cast<UINT>(p->width), static_cast<UINT>(p->height), GUID_WICPixelFormat32bppPBGRA,
                                            static_cast<UINT>(p->width) * 4, static_cast<UINT>(p->bgra.size()), p->bgra.data(), &src)) ||
         FAILED(wic->CreateBitmapScaler(&scaler)) ||
-        FAILED(scaler->Initialize(src.Get(), static_cast<UINT>(px), static_cast<UINT>(px), WICBitmapInterpolationModeHighQualityCubic)))
+        FAILED(scaler->Initialize(src.Get(), static_cast<UINT>(px), static_cast<UINT>(px),
+                                 px < p->width ? WICBitmapInterpolationModeFant : WICBitmapInterpolationModeHighQualityCubic)))
         return false;
     Pixels out;
     out.width = out.height = px;
@@ -396,6 +397,8 @@ bool IsGenericAppIcon(const Pixels& p) {
 
 namespace {
 
+constexpr int kJumboPx = 256;  // SHIL_JUMBO edge: icons are fetched at this size and scaled down to the tier
+
 enum class Got { Miss, Generic, Ok };
 
 // A candidate counts when it has content and is not the generic icon; it is then brought to exactly tier x tier.
@@ -414,7 +417,11 @@ Got FromShellFactory(const std::wstring& parsingName, int tier, Pixels* out) {
     ComPtr<IShellItemImageFactory> factory;
     if (FAILED(item.As(&factory))) return Got::Miss;
     HBITMAP bmp = nullptr;
-    if (FAILED(factory->GetImage({tier, tier}, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &bmp)) || !bmp) return Got::Miss;
+    // Always ask for the largest size (the jumbo 256 px list): an icon whose best native size is <= 48 px is then enlarged
+    // once by the shell, and everything smaller than that is a Fant downscale of it, which stays sharper than letting the
+    // shell upscale straight to a small tier.
+    const int fetch = std::max(tier, kJumboPx);
+    if (FAILED(factory->GetImage({fetch, fetch}, SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK, &bmp)) || !bmp) return Got::Miss;
     Pixels px;
     bool have = HbitmapToPixels(bmp, &px);
     DeleteObject(bmp);
@@ -429,9 +436,9 @@ Got FromExtractIcon(const std::wstring& file, int index, int tier, Pixels* out) 
     if (n == 0 || n > path.size()) return Got::Miss;
     path.resize(n - 1);
     HICON large = nullptr;
-    if (FAILED(SHDefExtractIconW(path.c_str(), index, 0, &large, nullptr, MAKELONG(tier, 0))) || !large) return Got::Miss;
+    if (FAILED(SHDefExtractIconW(path.c_str(), index, 0, &large, nullptr, MAKELONG(std::max(tier, kJumboPx), 0))) || !large) return Got::Miss;
     Pixels px;
-    bool have = HiconToPixels(large, tier, &px);
+    bool have = HiconToPixels(large, std::max(tier, kJumboPx), &px);
     DestroyIcon(large);
     return have ? Judge(std::move(px), tier, out) : Got::Miss;
 }
@@ -703,8 +710,8 @@ void DrawFallbackTile(ID2D1DeviceContext* dc, const D2D1_RECT_F& rect, const std
     const float size = rect.right - rect.left, radius = size * 0.227f;
     // Last resort, but still on the same neutral tile as every other icon; the name's hue colours the letter.
     {
-        const D2D1_GRADIENT_STOP stops[2] = {{0.0f, D2D1::ColorF(0.965f, 0.965f, 0.973f, opacity)},
-                                             {1.0f, D2D1::ColorF(0.870f, 0.870f, 0.890f, opacity)}};
+        const D2D1_GRADIENT_STOP stops[2] = {{0.0f, D2D1::ColorF(0.996f, 0.996f, 1.0f, opacity)},
+                                             {1.0f, D2D1::ColorF(0.835f, 0.840f, 0.862f, opacity)}};
         ComPtr<ID2D1GradientStopCollection> coll;
         ComPtr<ID2D1LinearGradientBrush> grad;
         if (SUCCEEDED(dc->CreateGradientStopCollection(stops, 2, &coll)) &&
