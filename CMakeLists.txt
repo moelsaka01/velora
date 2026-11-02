@@ -143,8 +143,20 @@ target_link_libraries(render_host_test PRIVATE velora_render)
 add_test(NAME render_host_test COMMAND render_host_test)
 
 # ui/: shared helpers for the shell UI (theme, DirectWrite, icon store). Owner B.
-add_library(velora_ui STATIC src/ui/ui_common.cpp src/ui/icon_tile.cpp)
-target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32 windowscodecs)
+# Velora's own app icons: assets/icons/*.svg are embedded as string literals at configure time.
+file(GLOB VELORA_SVGS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/icons/*.svg)
+set(VELORA_SVG_CPP "namespace velora::ui {\n")
+foreach(svg ${VELORA_SVGS})
+  get_filename_component(svg_name ${svg} NAME_WE)
+  string(REPLACE "-" "_" svg_id ${svg_name})
+  file(READ ${svg} svg_text)
+  string(APPEND VELORA_SVG_CPP "extern const char* const kSvg_${svg_id} = R\"SVG(${svg_text})SVG\";\n")
+endforeach()
+string(APPEND VELORA_SVG_CPP "}  // namespace velora::ui\n")
+file(WRITE ${CMAKE_BINARY_DIR}/generated/builtin_icons_data.cpp "${VELORA_SVG_CPP}")
+add_library(velora_ui STATIC src/ui/ui_common.cpp src/ui/icon_tile.cpp src/ui/builtin_icons.cpp
+            ${CMAKE_BINARY_DIR}/generated/builtin_icons_data.cpp)
+target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32 windowscodecs d3d11 dxgi d2d1 shlwapi)
 # The Dock's pure geometry and blur maths (no windows.h), shared with the wallpaper backdrop.
 add_library(velora_dock_layout STATIC src/dock/dock_layout.cpp)
 target_link_libraries(velora_dock_layout PUBLIC velora_tokens)
@@ -194,3 +206,6 @@ target_link_libraries(velora_dock PUBLIC velora_apps velora_backdrop velora_dock
 add_executable(dock_test tests/dock_test.cpp)
 target_link_libraries(dock_test PRIVATE velora_dock)
 add_test(NAME dock_test COMMAND dock_test)
+add_executable(builtin_icons_test tests/builtin_icons_test.cpp)
+target_link_libraries(builtin_icons_test PRIVATE velora_ui)
+add_test(NAME builtin_icons_test COMMAND builtin_icons_test)
