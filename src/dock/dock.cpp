@@ -3,6 +3,7 @@
 #include <propsys.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <wincodec.h>
 #include <windowsx.h>
 
 #include <algorithm>
@@ -17,6 +18,7 @@
 #include "core/runtime.h"
 #include "core/text.h"
 #include "ui/ui_common.h"
+#include "wallpaper/wallpaper.h"
 
 namespace velora::dock {
 
@@ -26,12 +28,10 @@ namespace {
 
 constexpr float kPad = tokens::size::kDockPadding;
 constexpr float kIcon = tokens::size::kDockIcon;
-constexpr float kGap = 6.0f;
-constexpr float kSepGap = 14.0f;
-constexpr float kBelowIcon = 10.0f;  // room for the running dot
-constexpr float kPillHeight = kPad + kIcon + kBelowIcon;
+constexpr float kShelf = tokens::dock::kShelfHeight;
 constexpr UINT_PTR kTimerFrame = 1;
 constexpr UINT_PTR kTimerRebuild = 2;
+constexpr UINT_PTR kTimerWallpaper = 3;  // one shot after attach: Velora applies its wallpaper right after entering
 
 constexpr PROPERTYKEY kPkeyAumid = {{0x9F4C2855, 0x9F79, 0x4B39, {0xA8, 0xD0, 0xE1, 0xD4, 0x2D, 0xE1, 0xD5, 0xF3}}, 5};
 
@@ -73,24 +73,6 @@ DockApp FileApp(const std::wstring& name, const std::filesystem::path& exe) {
 }
 
 }  // namespace
-
-DockGeometry ComputeGeometry(size_t itemCount, size_t pinnedCount) {
-    DockGeometry g;
-    pinnedCount = std::min(pinnedCount, itemCount);
-    bool sep = pinnedCount > 0 && itemCount > pinnedCount;
-    float x = kPad;
-    for (size_t i = 0; i < itemCount; ++i) {
-        if (sep && i == pinnedCount) {
-            g.separatorX = x - kGap + kSepGap / 2;
-            x += kSepGap;
-        }
-        g.itemX.push_back(x);
-        x += kIcon + kGap;
-    }
-    g.pillWidth = itemCount ? x - kGap + kPad : 2 * kPad;
-    g.pillHeight = kPillHeight;
-    return g;
-}
 
 std::vector<DockApp> DefaultPinned() {
     std::vector<DockApp> list;
@@ -161,7 +143,7 @@ Dock::~Dock() {
     Detach();
 }
 
-float Dock::ReservedDip() const { return kPillHeight + tokens::size::kDockBottomInset; }
+float Dock::ReservedDip() const { return kShelf + tokens::size::kDockBottomInset; }
 
 sw::AppBarOptions Dock::Options() {
     sw::AppBarOptions o;
@@ -171,13 +153,14 @@ sw::AppBarOptions Dock::Options() {
     return o;
 }
 
+// The window is the shelf plus the margin it stretches into and the headroom magnified icons grow into; its bottom
+// edge is the bottom of the reserved band.
 RECT Dock::Placement(const RECT& reserved, UINT dpi) const {
     float s = ui::Scale(dpi);
-    int w = std::min(static_cast<int>(std::lround(geo_.pillWidth * s)), static_cast<int>(reserved.right - reserved.left));
-    int h = static_cast<int>(std::lround(geo_.pillHeight * s));
-    int bottom = reserved.bottom - static_cast<int>(std::lround(tokens::size::kDockBottomInset * s));
+    int w = std::min(static_cast<int>(std::lround(WindowWidthDip() * s)), static_cast<int>(reserved.right - reserved.left));
+    int h = static_cast<int>(std::lround(WindowHeightDip() * s));
     int left = reserved.left + (reserved.right - reserved.left - w) / 2;
-    return RECT{left, bottom - h, left + w, bottom};
+    return RECT{left, reserved.bottom - h, left + w, reserved.bottom};
 }
 
 void Dock::ApplyPlacement() {
@@ -186,13 +169,30 @@ void Dock::ApplyPlacement() {
     SetWindowPos(hwnd_, nullptr, w.left, w.top, w.right - w.left, w.bottom - w.top, SWP_NOACTIVATE | SWP_NOZORDER);
 }
 
-// The acrylic backdrop fills the whole window; clip the window to the pill so the blur has rounded corners.
-void Dock::ApplyRegion() {
-    if (!hwnd_ || !backdrop_) return;
+// What part of the window takes the pointer (and shows pixels). At rest only the shelf and its shadow, so the headroom
+// above and the margins beside it never block the windows underneath; while the Dock is hovered or magnified, the
+// whole window.
+void Dock::UpdateRegion(bool force) {
+    if (!hwnd_) return;
+    bool full = hoverActive_;
+    for (float s : scale_)
+        if (s > 1.004f) full = true;
+    if (!force && regionSet_ && full == regionFull_) return;
     RECT rc{};
     GetClientRect(hwnd_, &rc);
-    int r = static_cast<int>(std::lround(tokens::radius::kLarge * ui::Scale(dpi_) * 2));
-    SetWindowRgn(hwnd_, CreateRoundRectRgn(0, 0, rc.right + 1, rc.bottom + 1, r, r), TRUE);  // the system owns the region
+    float s = ui::Scale(dpi_);
+    HRGN rgn = nullptr;
+    if (full) {
+        rgn = CreateRectRgn(0, 0, rc.right, rc.bottom);
+    } else {
+        const float pad = tokens::dock::kShadowPad, left = (WindowWidthDip() - baseGeo_.pillWidth) / 2;
+        int r = static_cast<int>(std::lround((tokens::radius::kDockShelf + pad) * 2 * s));
+        rgn = CreateRoundRectRgn(static_cast<int>(std::lround((left - pad) * s)), static_cast<int>(std::lround((headroom_ - pad) * s)),
+                                 static_cast<int>(std::lround((left + baseGeo_.pillWidth + pad) * s)) + 1, rc.bottom + 1, r, r);
+    }
+    if (rgn) SetWindowRgn(hwnd_, rgn, FALSE);  // the system owns the region now
+    regionFull_ = full;
+    regionSet_ = true;
 }
 
 void Dock::Attach(sw::AppBar* bar) {
@@ -206,15 +206,16 @@ void Dock::Attach(sw::AppBar* bar) {
         bar_ = nullptr;
         return;
     }
-    backdrop_ = ui::TransparencyEnabled() && render::ApplyBackdrop(hwnd_, render::Backdrop::Acrylic, ui::SystemTheme());
-    if (!backdrop_) render::ApplyBackdrop(hwnd_, render::Backdrop::None, ui::SystemTheme());
+    render::ApplyBackdrop(hwnd_, render::Backdrop::None, ui::SystemTheme());  // the material is drawn, see dock.h
     render::ApplyRoundedCorners(hwnd_, false);
     iconListener_ = ui::IconStore::Get().AddListener([this] { if (hwnd_) Draw(); });
     appear_ = 0;
     anim_.Start({0, 1, tokens::timing::kSlow, 0, tokens::timing::kDecelerate}, [this](float v, bool) { appear_ = v; }, NowMs());
+    wallDirty_ = true;
     Rebuild();
     ApplyPlacement();
-    ApplyRegion();
+    UpdateRegion(true);
+    SetTimer(hwnd_, kTimerWallpaper, 1500, nullptr);
     Tick();
     log::Info("dock: attached, " + std::to_string(host_.Width()) + "x" + std::to_string(host_.Height()) + " px, " + std::to_string(items_.size()) + " items");
 }
@@ -224,11 +225,14 @@ void Dock::Detach() {
     ui::IconStore::Get().RemoveListener(iconListener_);
     KillTimer(hwnd_, kTimerFrame);
     KillTimer(hwnd_, kTimerRebuild);
+    KillTimer(hwnd_, kTimerWallpaper);
     frameTimer_ = rebuildPending_ = false;
     bitmaps_.clear();
+    wall_.Reset();
     host_.Shutdown();
     hwnd_ = nullptr;
     bar_ = nullptr;
+    regionSet_ = false;
 }
 
 void Dock::ScheduleRebuild() {
@@ -298,6 +302,78 @@ DockApp Dock::DescribeUnpinned(const DockWindow& w) {
     return a;
 }
 
+namespace {
+
+// The part of the wallpaper image behind `win` (screen pixels) on monitor `mon`, scaled to the window's pixel size.
+// WIC pulls rows on demand, so a large image is never decoded in full. Positions other than "stretch" are treated as
+// "fill" (covers the monitor, centred), which is what Velora's own wallpaper uses.
+bool LoadWallpaperRegion(const std::wstring& path, bool stretch, const RECT& mon, const RECT& win, ui::Pixels* out) {
+    ComPtr<IWICImagingFactory> wic;
+    ComPtr<IWICBitmapDecoder> decoder;
+    ComPtr<IWICBitmapFrameDecode> frame;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wic))) ||
+        FAILED(wic->CreateDecoderFromFilename(path.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &decoder)) ||
+        FAILED(decoder->GetFrame(0, &frame)))
+        return false;
+    UINT iw = 0, ih = 0;
+    if (FAILED(frame->GetSize(&iw, &ih)) || !iw || !ih) return false;
+    const int rw = win.right - win.left, rh = win.bottom - win.top;
+    if (rw < 1 || rh < 1) return false;
+    SourceRect s = WallpaperSourceRect(static_cast<int>(iw), static_cast<int>(ih), mon.right - mon.left, mon.bottom - mon.top, stretch,
+                                       win.left - mon.left, win.top - mon.top, rw, rh);
+    int x0 = std::max(0, static_cast<int>(std::floor(s.x))), y0 = std::max(0, static_cast<int>(std::floor(s.y)));
+    int x1 = std::min(static_cast<int>(iw), static_cast<int>(std::ceil(s.x + s.w))), y1 = std::min(static_cast<int>(ih), static_cast<int>(std::ceil(s.y + s.h)));
+    if (x1 - x0 < 1 || y1 - y0 < 1) return false;
+    WICRect clip{x0, y0, x1 - x0, y1 - y0};
+    ComPtr<IWICBitmapClipper> clipper;
+    ComPtr<IWICFormatConverter> conv;
+    ComPtr<IWICBitmapScaler> scaler;
+    // Premultiply before scaling (scaling straight alpha bleeds dark edges), then scale with the Fant filter.
+    if (FAILED(wic->CreateBitmapClipper(&clipper)) || FAILED(clipper->Initialize(frame.Get(), &clip)) || FAILED(wic->CreateFormatConverter(&conv)) ||
+        FAILED(conv->Initialize(clipper.Get(), GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom)) ||
+        FAILED(wic->CreateBitmapScaler(&scaler)) ||
+        FAILED(scaler->Initialize(conv.Get(), static_cast<UINT>(rw), static_cast<UINT>(rh), WICBitmapInterpolationModeFant)))
+        return false;
+    out->width = rw;
+    out->height = rh;
+    out->bgra.assign(static_cast<size_t>(rw) * rh * 4, 0);
+    return SUCCEEDED(scaler->CopyPixels(nullptr, static_cast<UINT>(rw) * 4, static_cast<UINT>(out->bgra.size()), out->bgra.data()));
+}
+
+}  // namespace
+
+// Crops the strip of wallpaper behind the window (the full monitor width, so moving or resizing the window only
+// shifts the bitmap), blurs it and keeps it as a bitmap: the shelf paints it as its backdrop. Null (and a stronger
+// veil) when the wallpaper is a colour, a slideshow or unreadable.
+void Dock::RebuildBackdrop(ID2D1DeviceContext* dc) {
+    wall_.Reset();
+    wallDirty_ = false;
+    if (!hwnd_ || !host_.Ready() || !dc) return;
+    const std::uint64_t t0 = NowMs();
+    RECT win{};
+    GetWindowRect(hwnd_, &win);
+    MONITORINFO mi{sizeof mi};
+    if (!GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi)) return;
+    std::wstring path;
+    int position = 4;  // DWPOS_FILL
+    if (!wallpaper::CurrentFor(mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom, &path, &position)) {
+        log::Info("dock: no wallpaper image behind the Dock; the shelf uses a stronger veil instead of a blurred backdrop");
+        return;
+    }
+    ui::Pixels px;
+    const RECT strip{mi.rcMonitor.left, win.top, mi.rcMonitor.right, win.bottom};
+    wallMonitorLeft_ = mi.rcMonitor.left;
+    wallHeightPx_ = win.bottom - win.top;
+    if (!LoadWallpaperRegion(path, position == 2 /* DWPOS_STRETCH */, mi.rcMonitor, strip, &px)) {
+        log::Warn("dock: could not read the wallpaper " + WideToUtf8(path) + "; stronger veil instead of a blurred backdrop");
+        return;
+    }
+    BoxBlur(px.bgra, px.width, px.height, std::max(1, static_cast<int>(std::lround(tokens::dock::kBlurSigma * ui::Scale(dpi_)))));
+    wall_ = ui::MakeBitmap(dc, px);
+    log::Info("dock: backdrop " + std::to_string(px.width) + "x" + std::to_string(px.height) + " px from the wallpaper, " +
+              std::to_string(NowMs() - t0) + " ms");
+}
+
 void Dock::Rebuild() {
     rebuildPending_ = false;
     std::vector<DockWindow> windows;
@@ -315,28 +391,44 @@ void Dock::Rebuild() {
         log::Info("dock: " + std::to_string(pinned_.size() - visible.size()) + " pinned app(s) hidden (missing file or module not at G1)");
     }
     items_ = BuildItems(visible, windows, [this](const DockWindow& w) { return DescribeUnpinned(w); });
-    size_t before = geo_.itemX.size();
-    float widthBefore = geo_.pillWidth;
-    geo_ = ComputeGeometry(items_.size(), visible.size());
-    hover_.assign(items_.size(), 0.0f);
+    pinnedCount_ = visible.size();
+    const float winW = WindowWidthDip(), winH = WindowHeightDip();
+    baseGeo_ = ComputeGeometry(items_.size(), pinnedCount_);
+    // Window margins: room for the widest the shelf gets while magnified, and for icons that overshoot the peak.
+    const float peak = anim_.Enabled() ? tokens::dock::kMagnifyPeak : 1.0f;
+    sideMargin_ = std::ceil(MaxGrowth(items_.size(), pinnedCount_, peak) / 2) + tokens::dock::kShadowPad;
+    headroom_ = std::max(tokens::dock::kShadowPad, kIcon * peak * 1.08f - IconBaseline() + 4.0f);
+    if (scale_.size() != items_.size()) {  // the item set changed: start from rest
+        for (auto id : scaleAnim_)
+            if (id) anim_.Cancel(id);
+        scale_.assign(items_.size(), 1.0f);
+        scaleTarget_.assign(items_.size(), 1.0f);
+        scaleAnim_.assign(items_.size(), 0);
+    }
+    geo_ = ComputeGeometry(items_.size(), pinnedCount_, &scale_);
     hoverIndex_ = -1;
     if (hwnd_) {
-        if (before != geo_.itemX.size() || widthBefore != geo_.pillWidth) ApplyPlacement();
+        if (winW != WindowWidthDip() || winH != WindowHeightDip()) ApplyPlacement();
+        UpdateRegion(true);
         Draw();
     }
 }
 
 int Dock::HitItem(float x, float y) const {
-    if (y < 0 || y > geo_.pillHeight) return -1;
+    const float sy = headroom_, base = sy + IconBaseline();
+    if (y > sy + kShelf) return -1;
+    const float sx = ShelfLeft(), half = tokens::dock::kSpacing / 2;
     for (size_t i = 0; i < geo_.itemX.size(); ++i)
-        if (x >= geo_.itemX[i] - kGap / 2 && x < geo_.itemX[i] + kIcon + kGap / 2) return static_cast<int>(i);
+        if (x >= sx + geo_.itemX[i] - half && x < sx + geo_.itemX[i] + geo_.itemSize[i] + half && y >= base - geo_.itemSize[i] - 4.0f)
+            return static_cast<int>(i);
     return -1;
 }
 
 ID2D1Bitmap* Dock::BitmapFor(ID2D1DeviceContext* dc, const std::wstring& icon) {
     if (icon.empty()) return nullptr;
     if (auto it = bitmaps_.find(icon); it != bitmaps_.end()) return it->second.Get();
-    const int tier = ui::IconTierFor(kIcon * ui::Scale(dpi_));  // decoded at the device size: no upscaling
+    // Decoded for the largest size the icon is ever drawn at (fully magnified), so magnifying never upscales.
+    const int tier = ui::IconTierFor(tokens::size::kDockIconMax * ui::Scale(dpi_));
     if (auto px = ui::IconStore::Get().Find(icon, tier)) {
         auto bmp = ui::MakeBitmap(dc, *px);
         bitmaps_[icon] = bmp;
@@ -346,13 +438,12 @@ ID2D1Bitmap* Dock::BitmapFor(ID2D1DeviceContext* dc, const std::wstring& icon) {
     return nullptr;
 }
 
-ID2D1Bitmap* Dock::VeloraBitmap(ID2D1DeviceContext* dc, const D2D1_RECT_F& dipRect) {
-    int px = static_cast<int>(std::lround((dipRect.right - dipRect.left) * ui::Scale(dpi_)));
-    std::wstring key = L"velora-app:" + std::to_wstring(px);
+ID2D1Bitmap* Dock::VeloraBitmap(ID2D1DeviceContext* dc, int tierPx) {
+    std::wstring key = L"velora-app:" + std::to_wstring(tierPx);
     if (auto it = bitmaps_.find(key); it != bitmaps_.end()) return it->second.Get();
     ComPtr<ID2D1Bitmap> bmp;
     ui::Pixels pixels;
-    if (ui::LoadVeloraIcon(px, &pixels)) bmp = ui::MakeBitmap(dc, pixels);
+    if (ui::LoadVeloraIcon(tierPx, &pixels)) bmp = ui::MakeBitmap(dc, pixels);
     bitmaps_[key] = bmp;  // a null entry also stops retrying every frame
     return bmp.Get();
 }
@@ -360,6 +451,8 @@ ID2D1Bitmap* Dock::VeloraBitmap(ID2D1DeviceContext* dc, const D2D1_RECT_F& dipRe
 void Dock::Tick() {
     if (!hwnd_) return;
     bool more = anim_.Tick(NowMs());
+    geo_ = ComputeGeometry(items_.size(), pinnedCount_, &scale_);
+    UpdateRegion(false);
     Draw();
     if (more && !frameTimer_) {
         SetTimer(hwnd_, kTimerFrame, 16, nullptr);
@@ -370,60 +463,137 @@ void Dock::Tick() {
     }
 }
 
+// One spring per icon, retargeted as the pointer moves (an interrupted spring keeps its velocity).
+void Dock::SetScaleTargets(const std::vector<float>& targets) {
+    if (targets.size() != scale_.size()) return;
+    for (size_t i = 0; i < targets.size(); ++i) {
+        if (std::fabs(targets[i] - scaleTarget_[i]) < 0.002f) continue;
+        scaleTarget_[i] = targets[i];
+        if (scaleAnim_[i] && anim_.Retarget(scaleAnim_[i], targets[i])) continue;
+        scaleAnim_[i] = anim_.StartSpring(scale_[i], targets[i], tokens::timing::kDockMagnify,
+                                          [this, i](float v, bool) { if (i < scale_.size()) scale_[i] = v; }, NowMs());
+    }
+}
+
+void Dock::UpdateMagnification(bool active, float pointerX) {
+    hoverActive_ = active && anim_.Enabled();
+    std::vector<float> targets(items_.size(), 1.0f);
+    if (hoverActive_)
+        targets = MagnifyScales(items_.size(), pinnedCount_, pointerX - WindowWidthDip() / 2, tokens::dock::kMagnifyPeak);
+    SetScaleTargets(targets);
+    // Frames are drawn by the timer, not per mouse event: a present waits for the display and would stall input.
+    if (anim_.ActiveCount() > 0 && !frameTimer_) {
+        SetTimer(hwnd_, kTimerFrame, 16, nullptr);
+        frameTimer_ = true;
+    }
+}
+
 void Dock::Draw() {
     if (!hwnd_ || !host_.Ready()) return;
-    const tokens::Palette& p = tokens::PaletteFor(ui::SystemTheme());
+    const tokens::Theme theme = ui::SystemTheme();
+    const tokens::Palette& p = tokens::PaletteFor(theme);
+    const tokens::Glass& glass = tokens::GlassFor(theme);
     const bool translucent = ui::TransparencyEnabled() && host_.EffectsEnabled();
     ID2D1DeviceContext* dc = host_.BeginDraw(D2D1::ColorF(0, 0, 0, 0));
     if (!dc) return;
+    RECT win{};
+    GetWindowRect(hwnd_, &win);
+    if (translucent && (wallDirty_ || (wall_ && win.bottom - win.top != wallHeightPx_))) RebuildBackdrop(dc);
     ComPtr<ID2D1SolidColorBrush> brush;
-    dc->CreateSolidColorBrush(ui::Rgba(translucent ? p.surface : p.surfaceStrong, appear_ * (backdrop_ ? 0.55f : 1.0f)), &brush);
-    float rise = (1.0f - appear_) * 24.0f;
-    dc->SetTransform(D2D1::Matrix3x2F::Translation(0, rise));
-    D2D1_ROUNDED_RECT pill = D2D1::RoundedRect(D2D1::RectF(0.5f, 0.5f, geo_.pillWidth - 0.5f, geo_.pillHeight - 0.5f),
-                                               tokens::radius::kLarge, tokens::radius::kLarge);
-    dc->FillRoundedRectangle(pill, brush.Get());
-    brush->SetColor(ui::Rgba(p.separator, appear_));
-    dc->DrawRoundedRectangle(pill, brush.Get(), 1.0f);
+    dc->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), &brush);
 
-    if (geo_.separatorX >= 0) dc->FillRectangle(D2D1::RectF(geo_.separatorX - 0.5f, 16, geo_.separatorX + 0.5f, geo_.pillHeight - 18), brush.Get());
+    const float s = ui::Scale(dpi_);
+    const float sx = ShelfLeft(), sy = headroom_, radius = tokens::radius::kDockShelf;
+    dc->SetTransform(D2D1::Matrix3x2F::Translation(0, (1.0f - appear_) * kShelf * 0.6f));  // rises into place
+    const D2D1_RECT_F shelfRect = D2D1::RectF(sx, sy, sx + geo_.pillWidth, sy + kShelf);
 
+    // Soft shadow: nested rounded rectangles that fade with distance (about a 12 DIP blur, 4 DIP down).
+    {
+        constexpr int kLayers = 8;
+        const float strength = static_cast<float>((glass.shadow.argb >> 24) & 0xFF) / 255.0f * appear_;
+        const float a = 1.0f - std::pow(1.0f - std::min(strength, 0.95f), 1.0f / kLayers);
+        for (int k = kLayers; k >= 1; --k) {
+            const float grow = tokens::dock::kShadowPad * k / kLayers;
+            D2D1_RECT_F r = D2D1::RectF(shelfRect.left - grow, shelfRect.top - grow + 4, shelfRect.right + grow, shelfRect.bottom + grow + 4);
+            brush->SetColor(D2D1::ColorF(static_cast<float>((glass.shadow.argb >> 16) & 0xFF) / 255.0f, static_cast<float>((glass.shadow.argb >> 8) & 0xFF) / 255.0f,
+                                         static_cast<float>(glass.shadow.argb & 0xFF) / 255.0f, a));
+            dc->FillRoundedRectangle(D2D1::RoundedRect(r, radius + grow, radius + grow), brush.Get());
+        }
+    }
+
+    const D2D1_ROUNDED_RECT shelf = D2D1::RoundedRect(shelfRect, radius, radius);
+    if (translucent) {
+        bool blurred = false;
+        if (wall_) {
+            ComPtr<ID2D1BitmapBrush> bb;
+            if (SUCCEEDED(dc->CreateBitmapBrush(wall_.Get(), &bb))) {
+                float bx = 96, by = 96;
+                wall_->GetDpi(&bx, &by);  // map the bitmap's pixels onto device pixels whatever DPI it was created with
+                bb->SetTransform(D2D1::Matrix3x2F::Scale(bx / static_cast<float>(dpi_), by / static_cast<float>(dpi_)) *
+                                 D2D1::Matrix3x2F::Translation(-static_cast<float>(win.left - wallMonitorLeft_) / s, 0));
+                bb->SetOpacity(appear_);
+                dc->FillRoundedRectangle(shelf, bb.Get());
+                blurred = true;
+            }
+        }
+        const float veil = blurred ? (theme == tokens::Theme::Dark ? tokens::dock::kVeilAlphaDark : tokens::dock::kVeilAlphaLight)
+                                   : tokens::dock::kVeilAlphaUnblurred;
+        brush->SetColor(ui::Rgba(glass.veil, veil * appear_));
+        dc->FillRoundedRectangle(shelf, brush.Get());
+    } else {
+        brush->SetColor(ui::Rgba(p.surfaceStrong, appear_));  // transparency effects off / gaming mode: opaque
+        dc->FillRoundedRectangle(shelf, brush.Get());
+    }
+    // Rim: a 1 DIP inner line, brighter at the top.
+    {
+        D2D1_GRADIENT_STOP stops[2] = {{0.0f, ui::Rgba(glass.rimTop, appear_)}, {1.0f, ui::Rgba(glass.rimBottom, appear_)}};
+        ComPtr<ID2D1GradientStopCollection> collection;
+        ComPtr<ID2D1LinearGradientBrush> rim;
+        if (SUCCEEDED(dc->CreateGradientStopCollection(stops, 2, &collection)) &&
+            SUCCEEDED(dc->CreateLinearGradientBrush(D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, sy), D2D1::Point2F(0, sy + kShelf)),
+                                                    collection.Get(), &rim)))
+            dc->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(sx + 0.5f, sy + 0.5f, sx + geo_.pillWidth - 0.5f, sy + kShelf - 0.5f), radius - 0.5f, radius - 0.5f),
+                                     rim.Get(), 1.0f);
+    }
+
+    if (geo_.separatorX >= 0) {  // hairline between the pinned apps and the rest
+        brush->SetColor(ui::Rgba(p.text, 0.18f * appear_));
+        dc->FillRectangle(D2D1::RectF(sx + geo_.separatorX - 0.5f, sy + kPad, sx + geo_.separatorX + 0.5f, sy + IconBaseline()), brush.Get());
+    }
+
+    const int veloraTier = ui::IconTierFor(tokens::size::kDockIconMax * s);
     for (size_t i = 0; i < items_.size() && i < geo_.itemX.size(); ++i) {
         const DockItem& it = items_[i];
-        float x = geo_.itemX[i], y = kPad;
-        if (hover_[i] > 0.001f) {
-            brush->SetColor(ui::Rgba(p.separator, hover_[i] * appear_));
-            dc->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x - 3, y - 3, x + kIcon + 3, y + kIcon + 3), 12, 12), brush.Get());
-        }
-        D2D1_RECT_F ir = D2D1::RectF(x + 2, y + 2, x + kIcon - 2, y + kIcon - 2);
+        const float size = geo_.itemSize[i], x = sx + geo_.itemX[i], bottom = sy + IconBaseline();
+        const D2D1_RECT_F ir = D2D1::RectF(x, bottom - size, x + size, bottom);
         if (it.app.internalApps) {
-            // The Apps item shows the Velora app icon, scaled to the device pixels of this display; the drawn
-            // dot grid (original glyph) is the fallback when the resource is unavailable.
-            if (ID2D1Bitmap* logo = VeloraBitmap(dc, ir)) {
+            // The Apps item shows the Velora app icon; the drawn dot grid (original glyph) is the fallback when the
+            // resource is unavailable.
+            if (ID2D1Bitmap* logo = VeloraBitmap(dc, veloraTier)) {
                 ui::DrawIcon(dc, logo, ir, appear_);
             } else {
                 brush->SetColor(ui::Rgba(p.accent, appear_));
-                dc->FillRoundedRectangle(D2D1::RoundedRect(ir, 12, 12), brush.Get());
+                dc->FillRoundedRectangle(D2D1::RoundedRect(ir, size * tokens::dock::kIconRadiusFraction, size * tokens::dock::kIconRadiusFraction), brush.Get());
                 brush->SetColor(D2D1::ColorF(1, 1, 1, appear_));
-                float cx = (ir.left + ir.right) / 2, cy = (ir.top + ir.bottom) / 2;
+                float cx = (ir.left + ir.right) / 2, cy = (ir.top + ir.bottom) / 2, step = size * 0.22f;
                 for (int r = -1; r <= 1; ++r)
-                    for (int c = -1; c <= 1; ++c) dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx + c * 10, cy + r * 10), 3, 3), brush.Get());
+                    for (int c = -1; c <= 1; ++c) dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx + c * step, cy + r * step), size * 0.07f, size * 0.07f), brush.Get());
             }
         } else if (ID2D1Bitmap* bmp = BitmapFor(dc, it.app.icon)) {
             ui::DrawIcon(dc, bmp, ir, appear_);
-        } else if (ui::IconStore::Get().Failed(it.app.icon, ui::IconTierFor(kIcon * ui::Scale(dpi_)))) {
+        } else if (ui::IconStore::Get().Failed(it.app.icon, ui::IconTierFor(tokens::size::kDockIconMax * s))) {
             ui::DrawFallbackTile(dc, ir, it.app.name, appear_);  // no icon exists anywhere (not even a generic one)
         } else {
             brush->SetColor(ui::Rgba(p.separator, appear_));  // placeholder until the icon arrives
-            dc->FillRoundedRectangle(D2D1::RoundedRect(ir, 12, 12), brush.Get());
+            dc->FillRoundedRectangle(D2D1::RoundedRect(ir, size * tokens::dock::kIconRadiusFraction, size * tokens::dock::kIconRadiusFraction), brush.Get());
         }
         if (it.Running()) {
-            brush->SetColor(ui::Rgba(it.Active() ? p.text : p.textSecondary, appear_));
-            dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + kIcon / 2, y + kIcon + 5), 2.5f, 2.5f), brush.Get());
+            brush->SetColor(ui::Rgba(p.text, (it.Active() ? 0.9f : 0.55f) * appear_));
+            dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + size / 2, sy + DotCentre()), tokens::dock::kDot / 2, tokens::dock::kDot / 2), brush.Get());
         }
         if (it.AnyUncontrollable()) {  // elevated window: Velora cannot minimize or close it
             brush->SetColor(D2D1::ColorF(0.95f, 0.6f, 0.1f, appear_));
-            dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x + kIcon - 4, y + 4), 4, 4), brush.Get());
+            dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(ir.right - 4, ir.top + 4), 4, 4), brush.Get());
         }
     }
     dc->SetTransform(D2D1::Matrix3x2F::Identity());
@@ -431,6 +601,8 @@ void Dock::Draw() {
         log::Warn("dock: present failed; recreating the render target");
         host_.Initialize(hwnd_);
         bitmaps_.clear();
+        wall_.Reset();
+        wallDirty_ = true;
     }
 }
 
@@ -499,7 +671,8 @@ void Dock::ShowItemMenu(int index) {
     float s = ui::Scale(dpi_);
     SetForegroundWindow(hwnd_);
     UINT cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_NONOTIFY | TPM_BOTTOMALIGN | TPM_CENTERALIGN,
-                              r.left + static_cast<int>((geo_.itemX[index] + kIcon / 2) * s), r.top, 0, hwnd_, nullptr);
+                              r.left + static_cast<int>((ShelfLeft() + geo_.itemX[index] + geo_.itemSize[index] / 2) * s),
+                              r.top + static_cast<int>((headroom_ + IconBaseline() - geo_.itemSize[index] - 6.0f) * s), 0, hwnd_, nullptr);
     PostMessageW(hwnd_, WM_NULL, 0, 0);
     DestroyMenu(menu);
 
@@ -542,13 +715,18 @@ bool Dock::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result) {
         case WM_SIZE:
             if (wp != SIZE_MINIMIZED) {
                 host_.Resize(LOWORD(lp), HIWORD(lp));
-                ApplyRegion();
+                UpdateRegion(true);
                 Draw();
             }
             return false;
         case WM_DPICHANGED:
             dpi_ = HIWORD(wp);
             bitmaps_.clear();
+            wallDirty_ = true;
+            return false;
+        case WM_SETTINGCHANGE:  // theme, transparency or wallpaper changed
+            wallDirty_ = true;
+            Draw();
             return false;
         case WM_TIMER:
             if (wp == kTimerFrame) {
@@ -562,32 +740,29 @@ bool Dock::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result) {
                 result = 0;
                 return true;
             }
+            if (wp == kTimerWallpaper) {
+                KillTimer(h, kTimerWallpaper);
+                wallDirty_ = true;
+                Draw();
+                result = 0;
+                return true;
+            }
             return false;
         case WM_MOUSEMOVE: {
-            int idx = HitItem(GET_X_LPARAM(lp) / s, GET_Y_LPARAM(lp) / s);
-            if (idx != hoverIndex_) {
-                auto fade = [this](int i, float to) {
-                    if (i < 0 || i >= static_cast<int>(hover_.size())) return;
-                    anim_.Start({hover_[i], to, tokens::timing::kFast, 0, tokens::timing::kStandard},
-                                [this, i](float v, bool) { if (i < static_cast<int>(hover_.size())) hover_[i] = v; }, NowMs());
-                };
-                fade(hoverIndex_, 0.0f);
-                fade(idx, 1.0f);
-                hoverIndex_ = idx;
+            const float mx = GET_X_LPARAM(lp) / s, my = GET_Y_LPARAM(lp) / s;
+            if (!tracking_) {
                 TRACKMOUSEEVENT t{sizeof t, TME_LEAVE, h, 0};
-                TrackMouseEvent(&t);
-                Tick();
+                tracking_ = TrackMouseEvent(&t) != FALSE;
             }
+            hoverIndex_ = HitItem(mx, my);
+            // The Dock magnifies while the pointer is on the shelf or just above it (where the icons grow into).
+            UpdateMagnification(my >= headroom_ - 24.0f, mx);
             return false;
         }
         case WM_MOUSELEAVE:
-            if (hoverIndex_ >= 0 && hoverIndex_ < static_cast<int>(hover_.size())) {
-                int i = hoverIndex_;
-                anim_.Start({hover_[i], 0.0f, tokens::timing::kFast, 0, tokens::timing::kStandard},
-                            [this, i](float v, bool) { if (i < static_cast<int>(hover_.size())) hover_[i] = v; }, NowMs());
-            }
+            tracking_ = false;
             hoverIndex_ = -1;
-            Tick();
+            UpdateMagnification(false, 0);
             return false;
         case WM_LBUTTONDOWN:
             pressIndex_ = HitItem(GET_X_LPARAM(lp) / s, GET_Y_LPARAM(lp) / s);

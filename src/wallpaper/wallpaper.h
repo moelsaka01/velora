@@ -35,6 +35,9 @@ bool Enabled();
 // Generate (cached by size/theme) and apply to every monitor. Saves the backup first. Returns the number of
 // monitors changed; safe to call again.
 int ApplyVelora(bool dark);
+// The image shown on the monitor whose rectangle (virtual-screen pixels) is given, and how it is placed (a
+// DESKTOP_WALLPAPER_POSITION value). False when it has no image (solid colour, slideshow) or cannot be read.
+bool CurrentFor(int left, int top, int right, int bottom, std::wstring* path, int* position);
 // Undo ApplyVelora. Idempotent; called from normal exit and from crash recovery.
 int RestoreOriginal();
 // Directory holding the generated images.

@@ -171,8 +171,8 @@ target_link_libraries(icons_test PRIVATE velora_apps)
 add_test(NAME icons_test COMMAND icons_test)
 
 # dock/: the Dock pill in the bottom appbar. Owner B.
-add_library(velora_dock STATIC src/dock/dock.cpp src/dock/dock_model.cpp)
-target_link_libraries(velora_dock PUBLIC velora_apps velora_ui velora_switch velora_windows velora_core)
+add_library(velora_dock STATIC src/dock/dock.cpp src/dock/dock_model.cpp src/dock/dock_layout.cpp)
+target_link_libraries(velora_dock PUBLIC velora_apps velora_ui velora_switch velora_windows velora_core velora_wallpaper windowscodecs)
 add_executable(dock_test tests/dock_test.cpp)
 target_link_libraries(dock_test PRIVATE velora_dock)
 add_test(NAME dock_test COMMAND dock_test)
