@@ -204,3 +204,11 @@ Machine: the developer laptop on a normal desktop (Claude app, browser, game lib
 ### Resume note (2026-11-02)
 - Done: #43 icons, #44 Dock glass + magnification, menu bar styling + Inter + drawn menu (#45), launcher panel (stacked PR). All unit tests pass locally (`ctest -E "switch_gate|release_hooks"`: 17/17); the two shell-launching tests run in CI only.
 - Left: the guided visual check of everything in Phase 3 (McAfee off, non-elevated PowerShell, `docs/QA.md`), the bench re-run for the RAM numbers, and the DWM corner radius on menus (8 px vs 11 pt) if it looks wrong.
+
+
+### Post-merge measurement (2026-11-02, main @ fead1c2, Release, 1920x1080 @ 150 %, 1 run, McAfee scanning off by the user)
+- `tools\bench.ps1 -Runs 1` (bench/20261102-215634_*): enter 236 ms, exit 332 ms, committed delta 42.9 MB, shell+watchdog private 115.2 MB / WS 135.2 MB, idle CPU 0 %, GPU 42.9 MB. Single run: no median/range yet (spec asks for 3).
+- Launcher (shell process, private bytes; driven with `velora-shell --open-apps` / `--close-apps`, added in #60): idle after 60 s 113.5 MB; Apps panel open 175.1 MB (+61.6 MB); 10 s after close 117.1 MB (WS 1.3 MB after the trim). Within the 150 MB budget in all three phases (shell only, watchdog not included).
+- "memory trim" log lines: `private 122 -> 122 MB, working set 144 -> 0 MB` and `private 117 -> 117 MB, working set 41 -> 0 MB`; icon cache trim releases 936 KB each time. Trim returns the working set, not private bytes; the private drop after close comes from the icon-cache release.
+- Visual check against MACOS_UI_SPEC (screenshots in C:\velora-ref\checks, outside the repo): Dock glass shelf, separator, running dot and menu bar (battery, clock) as specified; Apps panel ~1262 px wide = 843 pt x 1.5, icon pitch matches. Defect seen: two "Application Verifier" tiles were still blank placeholders 10 s after opening; the panel's lower rows are cut off by the Claude window beneath (not a Velora defect).
+- Exit: `--exit` restored taskbar (visible), wallpaper (restored 1 monitor), no dirty marker, no resident Velora process.

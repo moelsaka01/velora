@@ -23,3 +23,5 @@ Physical and live checks per module, seeded from the evidence in [PROGRESS.md](P
 Update this table in the same PR that changes a module's evidence in PROGRESS.md.
 
 **Resolved (#58):** the switch_gate first-shell-start flake ("shell entered after recovery") was the watchdog's 2.5 s heartbeat timeout armed at the shell's hello, before a slow cold-start Enter() could send its first heartbeat; the watchdog killed a healthy shell (exit code 1). Fixed with a 10 s allowance until the first heartbeat; the slow-first-heartbeat gate phase reproduces it deterministically.
+
+**Post-merge run (2026-11-02, main @ fead1c2):** done: bench x1 (enter 236 ms, exit 332 ms, committed delta 42.9 MB, shell+watchdog private 115.2 MB, idle CPU 0 %), launcher memory idle 113.5 / open 175.1 / closed 117.1 MB private, exit restore (taskbar, wallpaper, no dirty marker), screenshots of Dock and Apps panel. Pending: 3-run median/range, multi-monitor and DPI matrix, blank icon tiles after 10 s, GPU memory with the panel open, dark-mode comparison against reference.

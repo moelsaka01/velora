@@ -1,0 +1,13 @@
+﻿{
+    "run":  1,
+    "enterMs":  236,
+    "exitMs":  332,
+    "committedDeltaMB":  42.9,
+    "shellPlusWatchdogPrivateMB":  115.2,
+    "shellPlusWatchdogWorkingSetMB":  135.2,
+    "gridOpenPrivateMB":  null,
+    "gridClosedPrivateMB":  null,
+    "idleCpuPercent":  0,
+    "gpuLocalMB":  42.9,
+    "csv":  "C:\\velora\\bench\\20261102-215634_run1.csv"
+}
