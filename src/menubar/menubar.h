@@ -75,7 +75,10 @@ private:
     HWND hwnd_ = nullptr;
     UINT dpi_ = 96;
     render::RenderHost host_;
-    bool backdrop_ = false;
+    bool backdrop_ = false;  // translucent material (blurred wallpaper + veil); false = opaque bar
+    Microsoft::WRL::ComPtr<ID2D1Bitmap> wall_;  // blurred wallpaper behind the bar, window-sized
+    bool wallDirty_ = true;
+    void RebuildBackdrop(ID2D1DeviceContext* dc);
     bool effects_ = true;
     tokens::Theme theme_ = tokens::Theme::Light;
     bool dirty_ = false;
