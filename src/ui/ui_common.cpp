@@ -22,6 +22,7 @@
 
 #include "core/log.h"
 #include "core/text.h"
+#include "ui/builtin_icons.h"
 #include "ui/icon_tile.h"
 #include "ui/resource_ids.h"
 
@@ -558,7 +559,10 @@ struct IconStore::Impl {
             auto px = std::make_shared<Pixels>();
             std::string how, trace;
             const std::string name = WideToUtf8(key.first) + " @" + std::to_string(key.second);
-            if (LoadIconPixels(key.first, px.get(), &how, false, key.second, &trace)) {
+            if (LoadBuiltinIcon(key.first, key.second, px.get())) {
+                how = "velora icon";  // our own artwork for a few inbox apps; already a filled tile
+                log::Info("icons: " + name + " via " + how);
+            } else if (LoadIconPixels(key.first, px.get(), &how, false, key.second, &trace)) {
                 // macOS 27 look: anything that is not already a filled rounded square goes on a neutral tile.
                 if (EnsureTile(px.get())) how += " +tile";
                 log::Info("icons: " + name + " via " + how);
