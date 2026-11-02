@@ -17,6 +17,7 @@ static_assert(timing::kFast < timing::kNormal && timing::kNormal < timing::kSlow
 static_assert(window::kSidebarWidth == 216.0f && window::kSidebarRowPitch == 32.0f && window::kToolbarControl == 36.0f);  // measured
 static_assert(window::kTrafficPitch == 23.0f && window::kTrafficDiameter == 13.0f && window::kTrafficCenterY == 26.0f);  // measured
 static_assert(window::kToolbarHeight == 2 * window::kTrafficCenterY);  // derived: the control centre line is 26 pt down
+static_assert(searchpanel::kWidth == 520.0f && searchpanel::kPillHeight == 86.5f && searchpanel::kGap == 10.5f);  // measured
 static_assert(PaletteFor(Theme::Dark).text.argb != PaletteFor(Theme::Light).text.argb);
 
 int main() {

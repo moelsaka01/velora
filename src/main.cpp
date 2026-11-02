@@ -26,6 +26,8 @@
 #include "apps/files_launch.h"
 #include "dock/dock.h"
 #include "menubar/menubar.h"
+#include "search/search_hotkey.h"
+#include "search/search_panel.h"
 #include "switch/restore.h"
 #include "switch/switch_manager.h"
 #include "ui/ui_common.h"
@@ -46,6 +48,8 @@ UINT g_taskbarCreated = 0;
 sw::SwitchManager* g_manager = nullptr;
 HWND g_window = nullptr;
 apps::AppsGrid* g_grid = nullptr;
+search::SearchPanel* g_search = nullptr;
+constexpr int kHotkeySearch = 1;  // RegisterHotKey id of the Search hotkey
 dock::Dock* g_dock = nullptr;
 menubar::MenuBar* g_menuBar = nullptr;
 constexpr UINT kMsgTrim = WM_APP + 43;  // the Apps panel closed: schedule the memory give-back
@@ -94,6 +98,20 @@ std::string HandleRequest(std::string_view raw) {
         else g_grid->Hide();
         json::Value p;
         p.Set("visible", g_grid->Visible());
+        return Reply(req, 0, p);
+    }
+    if (t == ipc::msg::kOpenSearch || t == ipc::msg::kCloseSearch) {
+        if (!g_search) return Reply(req, 501, {}, "search panel unavailable");
+        if (t == ipc::msg::kOpenSearch) {
+            if (!g_search->Visible()) g_search->Show();
+            const auto* p = req.Find("payload");
+            const auto* q = p ? p->Find("query") : nullptr;
+            if (q && q->IsString() && g_search->Visible()) g_search->SetQuery(Utf8ToWide(q->AsString()));
+        } else {
+            g_search->Hide();
+        }
+        json::Value p;
+        p.Set("visible", g_search->Visible());
         return Reply(req, 0, p);
     }
     if (t == ipc::msg::kOpenFiles || t == ipc::msg::kOpenApp) {
@@ -160,10 +178,13 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     switch (msg) {
+        case WM_HOTKEY:
+            if (wp == static_cast<WPARAM>(kHotkeySearch) && g_search) g_search->Toggle();
+            return 0;
         case WM_TIMER:
             if (wp == kTimerTrim) {
                 KillTimer(h, wp);
-                if (g_grid && g_grid->Visible()) return 0;  // reopened meanwhile; the next close schedules again
+                if ((g_grid && g_grid->Visible()) || (g_search && g_search->Visible())) return 0;  // reopened meanwhile; the next close schedules again
                 // Keep only what the Dock draws; the launcher's icons are decoded again on the next open.
                 const size_t freed = g_dock ? ui::IconStore::Get().Trim(g_dock->IconSources()) : 0;
                 if (g_dock) g_dock->Trim();
@@ -279,6 +300,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             else if (std::wstring(argv[i]) == L"--recover-only") recoverOnly = true;
             else if (std::wstring(argv[i]) == L"--open-apps") appsCommand = ipc::msg::kOpenApps;
             else if (std::wstring(argv[i]) == L"--close-apps") appsCommand = ipc::msg::kCloseApps;
+            else if (std::wstring(argv[i]) == L"--close-search") appsCommand = ipc::msg::kCloseSearch;
+            else if (std::wstring(argv[i]) == L"--open-search") {
+                appsCommand = ipc::msg::kOpenSearch;
+                if (i + 1 < argc && std::wstring(argv[i + 1]).rfind(L"--", 0) != 0) commandPayload.Set("query", WideToUtf8(argv[++i]));
+            }
             else if (std::wstring(argv[i]) == L"--open-files") {
                 appsCommand = ipc::msg::kOpenFiles;
                 if (i + 1 < argc && std::wstring(argv[i + 1]).rfind(L"--", 0) != 0) commandPayload.Set("path", WideToUtf8(argv[++i]));
@@ -366,6 +392,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     apps::AppsGrid grid(instance);
     g_grid = &grid;
     menuActions.openApps = [] { if (g_grid) g_grid->Toggle(); };
+    search::SearchPanel searchPanel(instance);
+    g_search = &searchPanel;
+    menuActions.openSearch = [] { if (g_search) g_search->Toggle(); };
     // Cached index first (instant), then a background refresh. Skipped in the test profile: the gate
     // measures switching, and a real-machine scan per spawned shell would only add noise.
     apps::AppIndex::Get().LoadCache();
@@ -378,6 +407,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     g_dock = &dock;
     g_menuBar = &menuBar;
     grid.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
+    searchPanel.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
+    // The global hotkey belongs to the real session only: the automated gate must not grab keys on the developer's machine.
+    if (!CurrentProfile().IsTest()) search::RegisterSearchHotkey(g_window, kHotkeySearch, search::ConfiguredHotkey());
     manager.SetDockOptions(dock.Options(), dock.ReservedDip());
     bus.Subscribe(EventType::Entered, [&](const Event&) {
         menuBar.Attach(manager.MenuBarBar().Hwnd());
@@ -426,6 +458,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     g_menuBar = nullptr;
     grid.Hide();
     g_grid = nullptr;
+    search::UnregisterSearchHotkey(g_window, kHotkeySearch);
+    searchPanel.Hide();
+    g_search = nullptr;
     ui::IconStore::Get().Shutdown();
     DestroyWindow(g_window);
     return 0;
