@@ -106,7 +106,8 @@ private:
 // Turns loaded pixels into a bitmap on `dc`; null on failure.
 Microsoft::WRL::ComPtr<ID2D1Bitmap> MakeBitmap(ID2D1DeviceContext* dc, const Pixels& p);
 // The tile drawn when no icon could be found anywhere: a rounded square (corner radius 22.7 % of its size, the Dock
-// icon radius of docs/MACOS_UI_SPEC.md) in a colour taken from the name, with the first letter in white.
+// icon radius of docs/MACOS_UI_SPEC.md) on the same neutral gradient as other icon tiles, with the first letter in a colour
+// taken from the name.
 void DrawFallbackTile(ID2D1DeviceContext* dc, const D2D1_RECT_F& rect, const std::wstring& name, float opacity = 1.0f);
 // Draws an icon bitmap into `dest` (DIPs) with the high-quality cubic filter: when the bitmap is larger than the
 // destination in device pixels, Direct2D pre-filters before it samples, so downscaled icons stay sharp.

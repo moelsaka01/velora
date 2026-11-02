@@ -21,6 +21,7 @@
 
 #include "core/log.h"
 #include "core/text.h"
+#include "ui/icon_tile.h"
 #include "ui/resource_ids.h"
 
 #pragma comment(lib, "dwrite.lib")
@@ -550,6 +551,8 @@ struct IconStore::Impl {
             std::string how, trace;
             const std::string name = WideToUtf8(key.first) + " @" + std::to_string(key.second);
             if (LoadIconPixels(key.first, px.get(), &how, false, key.second, &trace)) {
+                // macOS 27 look: anything that is not already a filled rounded square goes on a neutral tile.
+                if (EnsureTile(px.get())) how += " +tile";
                 log::Info("icons: " + name + " via " + how);
             } else {
                 log::Warn("icons: no icon found for " + name + " (" + trace + "); drawing the letter tile");
@@ -650,7 +653,7 @@ void DrawFallbackTile(ID2D1DeviceContext* dc, const D2D1_RECT_F& rect, const std
     // A stable hue from the name (FNV-1a), moderate saturation: tiles differ from each other and stay quiet.
     std::uint32_t h = 2166136261u;
     for (wchar_t c : Lower(name)) h = (h ^ static_cast<std::uint32_t>(c)) * 16777619u;
-    const float hue = static_cast<float>(h % 360) / 60.0f, s = 0.42f, l = 0.46f;
+    const float hue = static_cast<float>(h % 360) / 60.0f, s = 0.50f, l = 0.42f;
     const float c = (1 - std::fabs(2 * l - 1)) * s, x = c * (1 - std::fabs(std::fmod(hue, 2.0f) - 1)), m = l - c / 2;
     float r = 0, g = 0, b = 0;
     switch (static_cast<int>(hue)) {
@@ -664,10 +667,22 @@ void DrawFallbackTile(ID2D1DeviceContext* dc, const D2D1_RECT_F& rect, const std
     ComPtr<ID2D1SolidColorBrush> brush;
     if (FAILED(dc->CreateSolidColorBrush(D2D1::ColorF(r + m, g + m, b + m, opacity), &brush))) return;
     const float size = rect.right - rect.left, radius = size * 0.227f;
-    dc->FillRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get());
+    // Last resort, but still on the same neutral tile as every other icon; the name's hue colours the letter.
+    {
+        const D2D1_GRADIENT_STOP stops[2] = {{0.0f, D2D1::ColorF(0.965f, 0.965f, 0.973f, opacity)},
+                                             {1.0f, D2D1::ColorF(0.870f, 0.870f, 0.890f, opacity)}};
+        ComPtr<ID2D1GradientStopCollection> coll;
+        ComPtr<ID2D1LinearGradientBrush> grad;
+        if (SUCCEEDED(dc->CreateGradientStopCollection(stops, 2, &coll)) &&
+            SUCCEEDED(dc->CreateLinearGradientBrush(
+                D2D1::LinearGradientBrushProperties(D2D1::Point2F(0, rect.top), D2D1::Point2F(0, rect.bottom)), coll.Get(), &grad)))
+            dc->FillRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), grad.Get());
+        else
+            dc->FillRoundedRectangle(D2D1::RoundedRect(rect, radius, radius), brush.Get());
+    }
     std::wstring letter = name.empty() ? L"?" : name.substr(0, 1);
     for (auto& ch : letter) ch = static_cast<wchar_t>(std::towupper(ch));
-    brush->SetColor(D2D1::ColorF(1, 1, 1, opacity));
+    brush->SetColor(D2D1::ColorF(r + m, g + m, b + m, opacity));
     DrawLabel(dc, brush.Get(), letter, rect, Format(size * 0.46f, DWRITE_FONT_WEIGHT_SEMI_BOLD), DWRITE_TEXT_ALIGNMENT_CENTER);
 }
 
