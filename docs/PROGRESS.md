@@ -185,9 +185,22 @@ Machine: the developer laptop on a normal desktop (Claude app, browser, game lib
 - **Not verified on screen** (the shell was not launched; McAfee): the look of the material over a real wallpaper, the magnification feel, the region switching (hover enter/leave), the shelf at 125 to 200 % scaling, per-frame cost. Backdrop build time is logged (`dock: backdrop WxH px from the wallpaper, N ms`).
 - Known limits: windows that float under the Dock are hidden by the shelf instead of blurred (no live backdrop); wallpaper positions other than fill/stretch use fill; the dark material is an estimate; one Dock (primary monitor).
 
-### Resume note (2026-11-02, session stopped: out of tokens)
-- Done: PR #43 icons (CI green), PR #44 Dock glass + magnification (CI green); Inter font + OFL added under assets/fonts (not loaded by code yet).
-- In progress: branch feat/menubar-glass (WIP draft PR, base feat/dock-liquid-glass): only the font files, no menu bar code changed yet.
-- Next 1: menu bar to the spec (height 30, 13 pt, 21.75 gap, translucent, menus 24 pt rows / 201 pt wide) with Inter loaded through an in-memory DirectWrite font collection in ui::Format.
-- Next 2: launcher grid (PR D, 60 pt icons, 115/102 pitch, blur, spring open/close from tokens::timing::kPanelOpen), then the RAM review (grid raised private bytes 103 -> 165-176 MB; Dock strip adds ~1-5 MB).
-- Then: all CI green, guided visual check (McAfee off, non-elevated PowerShell); the shell was never launched in this session.
+### Phase 3 / menu bar (PR feat/menubar-glass, stacked on #44)
+- **Font:** Inter (OFL) is linked into velora-shell as an RCDATA resource and loaded as an in-memory DirectWrite collection (`ui::Format`, IDWriteFactory5); Segoe UI stays as the fallback. `font_test` (this machine): family loads, `Format()` uses it, semibold is wider than regular (the variable weight axis works); private bytes +1.2 MB with the DirectWrite factory (+1.7 MB with formats).
+- **Bar:** 30 pt, Inter 13 pt, 21.75 pt between titles and right-hand items, selected-title capsule (23 pt, fully rounded) on the logo, light veil over the Acrylic backdrop, no bottom hairline. The spec's bar is fully transparent with white text; the veil is a working value so text stays readable on any wallpaper (DECISIONS).
+- **Menu:** the native `TrackPopupMenu` is replaced by `menubar/menu_popup` (drawn; own window while open): 24 pt rows, 201.5 pt wide, 5 pt padding, 6 pt highlight radius, accent highlight, hairline separators, 4.5 pt under the capsule. Pure geometry/navigation in `menubar/menu_layout` (`menu_layout_test`: the measured 7 rows + 4 separators = 222 pt, 35 pt pitch, hit test, keyboard wrap/skip). Limit: corners are the DWM "round" preference (8 px), not the measured 11 pt, because a custom radius cannot be combined with a DWM backdrop.
+- **Not verified on screen** (the shell was not launched; McAfee): everything visual and all popup interaction (see `docs/QA.md`, Phase 3 visual check).
+
+### Phase 3 / launcher (Apps panel; PR feat/launcher-glass, stacked on the menu bar PR)
+- The full-screen DWM-Acrylic grid is now an 843 pt glass panel (centred, clear of the Dock) inside a transparent monitor-sized window (so a click outside still dismisses): blurred wallpaper (`ui/backdrop`: the Dock's wallpaper-region loader and box blur, now shared; built at <= 640 px on the long side, ~1 MB, freed on close) under a 70 % rgb(103,87,74) veil, 1 DIP rim, soft shadow; opaque dark fill with transparency effects off.
+- 60 pt icons, 115 x 102 pt pitch (7 columns in the panel), white text, search pill; open/close with the `kPanelOpen` spring (0.45 s, no bounce) plus scale 0.94 -> 1 and fade; Esc / click outside / right click close with the reverse spring, launching or losing focus closes at once; animations off = instant.
+- Tests: `apps_test` (panel geometry, 7 columns), `backdrop_test` (crop on a generated image, failure paths, real wallpaper blur contract). Panel corner radius 45 pt (spec, "or more", low confidence) clamped to half the short side.
+- **Not verified on screen** (see QA): material, spring feel, hit regions, scaling, multi-monitor.
+
+### RAM review (Phase 3, partial)
+- Measured here (`font_test`, a test process, not the shell): Inter + DirectWrite factory +1.2 MB private, formats +0.5 MB.
+- By construction: the panel's blurred backdrop is ~1 MB and released with the window; the grid's icon tier for 60 DIP equals the old 56 DIP tier at 100 / 150 % and 200 % (64 / 96 / 128). The earlier ~+35 MB retained after the first grid use (icon pixels in `IconStore`, D2D/DirectWrite caches, shell DLLs) is **not re-measured and not reduced**: it needs the shell running (`tools/bench.ps1`), which the guided check should do.
+
+### Resume note (2026-11-02)
+- Done: #43 icons, #44 Dock glass + magnification, menu bar styling + Inter + drawn menu (#45), launcher panel (stacked PR). All unit tests pass locally (`ctest -E "switch_gate|release_hooks"`: 17/17); the two shell-launching tests run in CI only.
+- Left: the guided visual check of everything in Phase 3 (McAfee off, non-elevated PowerShell, `docs/QA.md`), the bench re-run for the RAM numbers, and the DWM corner radius on menus (8 px vs 11 pt) if it looks wrong.

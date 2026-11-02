@@ -1,5 +1,6 @@
 // apps: matching/filtering, merge, JSON cache round trip, grid layout math, and one real scan
 // (read-only: AppsFolder + Start-menu shortcuts). Never launches anything.
+#include <cmath>
 #include <cstdio>
 
 #include "apps/app_index.h"
@@ -101,6 +102,16 @@ int main() {
     CHECK(g.columns >= 3 && g.columns <= 9);
     CHECK(g.left >= 0 && g.left + g.columns * g.tileW <= 1920.0f + 0.01f);
     CHECK(ComputeGridLayout(200).columns == 3);
+    // The 843 pt panel shows 7 columns of the measured 115 pt pitch; tiles are 102 pt tall.
+    GridLayout gp = ComputeGridLayout(843);
+    CHECK(gp.columns == 7 && gp.tileW == 115.0f && gp.tileH == 102.0f);
+    CHECK(gp.left >= 0 && gp.left + gp.columns * gp.tileW <= 843.0f + 0.01f);
+    // Panel: 843 pt wide, centred, clear of the top and of the Dock; narrower on a small screen.
+    PanelGeometry pg = ComputePanel(1920, 1080);
+    CHECK(pg.width == 843.0f && std::fabs(pg.left - (1920 - 843) / 2.0f) < 0.01f);
+    CHECK(pg.top >= 32 && pg.top + pg.height <= 1080 - 100);
+    PanelGeometry narrow = ComputePanel(600, 500);
+    CHECK(narrow.width <= 600 - 64 + 0.01f && narrow.left >= 0 && narrow.height >= 240);
     CHECK(ScrollToRow(0, 0, 100, 300) == 0);
     CHECK(ScrollToRow(0, 5, 100, 300) == 300);   // row 5 spans 500..600: scroll so its bottom is visible
     CHECK(ScrollToRow(500, 2, 100, 300) == 200);  // row above the viewport

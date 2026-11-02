@@ -71,6 +71,20 @@ inline constexpr std::uint32_t kBarVeilLight = 0x40F5F5F7, kBarVeilDark = 0x5924
 inline constexpr std::uint32_t kPopupFillLight = 0xC4F8F8FA, kPopupFillDark = 0xC4262628;
 }  // namespace menu
 
+// Apps panel (docs/MACOS_UI_SPEC.md, "Apps"; measured, low confidence unless noted).
+namespace appspanel {
+inline constexpr float kWidth      = 843.0f;   // medium
+inline constexpr float kIcon       = 60.0f;
+inline constexpr float kColumnPitch = 115.0f;
+inline constexpr float kRowPitch   = 102.0f;
+inline constexpr float kRadius     = 45.0f;    // "about 45 pt or more"; clamped to half the panel's short side
+inline constexpr float kInset      = 16.0f;    // panel edge to the first column (working value)
+inline constexpr float kBlurSigma  = 20.0f;    // DIPs (working value)
+inline constexpr std::uint32_t kVeil = 0xB367574A;  // rgb(103,87,74) at 70 %: dark-tinted glass, light and dark mode alike
+inline constexpr std::uint32_t kVeilUnblurred = 0xE0443A32;  // no wallpaper image to blur, or no transparency
+inline constexpr float kOpenFrom   = 0.94f;    // scale at the start of the open spring (working value)
+}  // namespace appspanel
+
 // Blur radius (DIPs) for backdrop effects. Gaming mode forces blur off.
 namespace blur {
 inline constexpr float kNone = 0.0f, kLight = 12.0f, kMedium = 24.0f, kHeavy = 40.0f;
