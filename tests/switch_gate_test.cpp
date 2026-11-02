@@ -853,6 +853,11 @@ void PhaseWatchdogLifecycle() {
         Proc wd = Spawn(g_watchdogExe, L"--watch " + std::to_wstring(helper.pid));
         ipc::PipeClient c;
         EXPECT(c.Connect(WatchdogPipeName(), 3000) && WatchdogRequest(c, ipc::msg::kHello, helper.pid) == 0, "armed");
+        {   // one heartbeat, then silence: the steady-state timeout applies (before the first beat the watchdog is more patient)
+            json::Value hb;
+            hb.Set("seq", 1);
+            c.Post(ipc::MakeMessage("event", ipc::msg::kHeartbeat, -1, hb));
+        }
         EXPECT(WaitExit(wd.h, ipc::kHeartbeatTimeoutMs + 2500), "watchdog exits after the heartbeat timeout");
         EXPECT(helper.Alive(), "the silent 'shell' was NOT terminated");
         EXPECT(TraysAll(false), "taskbars untouched without a marker");
