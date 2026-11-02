@@ -19,7 +19,7 @@ Status: not started | in progress | gated | passed | deferred
 | desktops | not started | |
 | hotkeys | not started | |
 | watchdog | gated | heartbeat, crash/hang/hotkey/login/--restore paths covered by the same gate |
-| files | in progress | empty target builds (Day 1 skeleton) |
+| files | gated (G1 built) | velora-files.exe: Finder-style window (216 pt sidebar with Favorites/Drives, toolbar, drawn traffic lights, list + icon views, sort, rename field, context menu, breadcrumbs, type-ahead), browse drives/folders, open with the default app, copy/move/rename/new folder via IFileOperation (OS conflict/permission dialogs), delete only to the Recycle Bin, clipboard (Explorer-compatible) and drag and drop in and out, single instance (second launch forwards its folder), `velora-shell --open-files [folder]`. `files_test` (141 checks: conflict policies, permission denied, locked file, long path, hash after every copy/move, data objects), `files_layout_test`, `files_window_test` (34 checks driving the real window). **Not yet seen on screen or exercised with a real mouse drag**; Dock Files pin is visible again |
 | settings | in progress | empty target builds (Day 1 skeleton) |
 | compat | not started | |
 | installer | not started | |
