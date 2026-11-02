@@ -9,6 +9,7 @@
 
 #include "core/log.h"
 #include "core/version.h"
+#include "ui/backdrop.h"
 #include "ui/ui_common.h"
 
 #pragma comment(lib, "powrprof.lib")
@@ -21,6 +22,7 @@ namespace {
 
 constexpr UINT_PTR kTimerClock = 1;
 constexpr UINT_PTR kTimerRedraw = 2;
+constexpr UINT_PTR kTimerWallpaper = 3;  // one shot after attach: Velora applies its wallpaper right after entering
 constexpr float kPad = 14.0f;
 namespace tm = velora::tokens::menu;
 
@@ -122,6 +124,7 @@ void MenuBar::Attach(HWND hwnd) {
     RefreshStatus();
     ArmClock();
     Layout();
+    SetTimer(hwnd_, kTimerWallpaper, 1500, nullptr);
     Draw();
 }
 
@@ -130,6 +133,8 @@ void MenuBar::Detach() {
     popup_.Close();
     KillTimer(hwnd_, kTimerClock);
     KillTimer(hwnd_, kTimerRedraw);
+    KillTimer(hwnd_, kTimerWallpaper);
+    wall_.Reset();
     dirty_ = false;  // the popup's close callback may have asked for a redraw whose timer is now gone
     host_.Shutdown();
     hwnd_ = nullptr;
@@ -145,10 +150,29 @@ void MenuBar::SetEffects(bool enabled) {
 
 void MenuBar::ReadTheme() {
     theme_ = ui::SystemTheme();
-    backdrop_ = effects_ && ui::TransparencyEnabled() &&
-                render::ApplyBackdrop(hwnd_, render::Backdrop::Acrylic, theme_);
-    if (!backdrop_) render::ApplyBackdrop(hwnd_, render::Backdrop::None, theme_);
+    // The material is drawn (blurred wallpaper + veil, like the Dock): the DWM backdrop renders as flat grey on a
+    // bar this thin, so it is switched off.
+    backdrop_ = effects_ && ui::TransparencyEnabled();
+    render::ApplyBackdrop(hwnd_, render::Backdrop::None, theme_);
     render::ApplyRoundedCorners(hwnd_, false);
+    wallDirty_ = true;
+}
+
+// The slice of wallpaper behind the bar, blurred; null (a stronger veil is used) for a colour/slideshow wallpaper.
+void MenuBar::RebuildBackdrop(ID2D1DeviceContext* dc) {
+    wall_.Reset();
+    wallDirty_ = false;
+    RECT win{};
+    MONITORINFO mi{sizeof mi};
+    if (!hwnd_ || !dc || !GetWindowRect(hwnd_, &win) ||
+        !GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi))
+        return;
+    ui::Pixels px;
+    if (!ui::BlurredWallpaper(mi.rcMonitor, win, 1, tokens::dock::kBlurSigma, dpi_, &px)) {
+        log::Info("menubar: no wallpaper image behind the bar; stronger veil instead of a blurred backdrop");
+        return;
+    }
+    wall_ = ui::MakeBitmap(dc, px);
 }
 
 void MenuBar::RefreshStatus() {
@@ -246,10 +270,17 @@ void MenuBar::Draw() {
     float h = tokens::size::kMenuBarHeight;
 
     // The spec's bar has no chrome at all (no veil, no edge). Over an arbitrary wallpaper that is not readable, so the bar
-    // keeps a light veil over the DWM backdrop and no bottom hairline.
+    // is the Dock's material: the blurred wallpaper with a neutral glass veil, and no bottom hairline.
     ComPtr<ID2D1SolidColorBrush> brush;
-    const std::uint32_t veil = theme_ == tokens::Theme::Dark ? tm::kBarVeilDark : tm::kBarVeilLight;
-    dc->CreateSolidColorBrush(ui::Rgba(backdrop_ ? tokens::Color{veil} : p.surfaceStrong), &brush);
+    dc->CreateSolidColorBrush(ui::Rgba(p.surfaceStrong), &brush);
+    if (backdrop_) {
+        if (wallDirty_) RebuildBackdrop(dc);
+        if (wall_) dc->DrawBitmap(wall_.Get(), D2D1::RectF(0, 0, w, h), 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+        const tokens::Glass& glass = tokens::GlassFor(theme_);
+        const float veil = wall_ ? (theme_ == tokens::Theme::Dark ? tokens::dock::kVeilAlphaDark : tokens::dock::kVeilAlphaLight)
+                                 : tokens::dock::kVeilAlphaUnblurred;
+        brush->SetColor(ui::Rgba(glass.veil, veil));
+    }
     dc->FillRectangle(D2D1::RectF(0, 0, w, h), brush.Get());
 
     if (hoverLogo_ || menuOpen_) {  // selected-title capsule: fully rounded
@@ -358,18 +389,27 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
         case WM_SIZE:
             if (wp != SIZE_MINIMIZED) {
                 host_.Resize(LOWORD(lp), HIWORD(lp));
+                wallDirty_ = true;
                 Layout();
                 Invalidate();
             }
             return false;
         case WM_DPICHANGED:
             dpi_ = HIWORD(wp);
+            wallDirty_ = true;
             return false;  // the appbar repositions itself
         case WM_SETTINGCHANGE:
             ReadTheme();
             Invalidate();
             return false;
         case WM_TIMER:
+            if (wp == kTimerWallpaper) {
+                KillTimer(h, kTimerWallpaper);
+                wallDirty_ = true;
+                Invalidate();
+                result = 0;
+                return true;
+            }
             if (wp == kTimerClock) {
                 RefreshStatus();
                 Layout();
