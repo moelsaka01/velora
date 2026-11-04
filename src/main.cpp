@@ -439,7 +439,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     grid.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
     searchPanel.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
     // The global hotkey belongs to the real session only: the automated gate must not grab keys on the developer's machine.
-    if (!CurrentProfile().IsTest()) search::RegisterSearchHotkey(g_window, kHotkeySearch, search::ConfiguredHotkey());
+    if (!CurrentProfile().IsTest()) {
+        const search::HotkeyChoice hk = search::RegisterSearchHotkey(g_window, kHotkeySearch, search::ConfiguredHotkey());
+        searchPanel.SetHotkeyHint(hk.registered ? search::FormatHotkey(hk.key) : std::wstring{});
+    }
     manager.SetDockOptions(dock.Options(), dock.ReservedDip());
     bus.Subscribe(EventType::Entered, [&](const Event&) {
         menuBar.Attach(manager.MenuBarBar().Hwnd());

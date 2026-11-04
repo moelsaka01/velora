@@ -83,6 +83,9 @@ BuiltinIcon BuiltinIconFor(const std::wstring& source) {
         if (Has(s, L"controlpanel")) return BuiltinIcon::ControlPanel;
         return BuiltinIcon::None;
     }
+    // Velora's own apps (Dock pins point at the executables): the tile would otherwise be the letter "F" / "S".
+    if (stem == L"velora-files") return BuiltinIcon::Files;
+    if (stem == L"velora-settings") return BuiltinIcon::Settings;
     if (stem == L"explorer" || stem == L"file explorer") return BuiltinIcon::Files;
     if (stem == L"settings") return BuiltinIcon::Settings;
     if (stem == L"powershell" || stem.rfind(L"windows powershell", 0) == 0) return BuiltinIcon::PowerShell;

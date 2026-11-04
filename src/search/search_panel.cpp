@@ -463,6 +463,12 @@ void SearchPanel::Draw() {
     if (text.empty()) {
         brush->SetColor(dim);
         ui::DrawLabel(dc, brush.Get(), L"Search", D2D1::RectF(tx, g.pillTop, tr, g.pillTop + g.pillH), fmt);
+        if (!hotkeyHint_.empty()) {  // the combination that opens this panel, right-aligned in the pill
+            IDWriteTextFormat* tiny = ui::Format(14);
+            const float w = ui::MeasureWidth(hotkeyHint_, tiny);
+            brush->SetColor(D2D1::ColorF(dim.r, dim.g, dim.b, dim.a * 0.75f));
+            ui::DrawLabel(dc, brush.Get(), hotkeyHint_, D2D1::RectF(tr - w, g.pillTop, tr, g.pillTop + g.pillH), tiny);
+        }
     } else {
         brush->SetColor(white);
         const float tw = ui::MeasureWidth(text.substr(0, edit_.Caret()), fmt);

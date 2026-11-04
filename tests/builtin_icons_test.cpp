@@ -35,6 +35,8 @@ int main() {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     struct { const wchar_t* src; BuiltinIcon want; } map[] = {
         {L"C:\\Windows\\explorer.exe", BuiltinIcon::Files},
+        {L"C:\\Program Files\\Velora\\velora-files.exe", BuiltinIcon::Files},
+        {L"C:\\Program Files\\Velora\\velora-settings.exe", BuiltinIcon::Settings},
         {L"C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\System Tools\\File Explorer.lnk", BuiltinIcon::Files},
         {L"shell:AppsFolder\\windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel", BuiltinIcon::Settings},
         {L"shell:AppsFolder\\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", BuiltinIcon::Terminal},
