@@ -38,7 +38,7 @@ bool IsFrameHost(const std::wstring& exe) {
 namespace {
 // Velora's own on-demand apps are empty stubs until they reach G1 (docs/PROGRESS.md). Remove a name here
 // in the same change that takes the module to G1.
-constexpr const wchar_t* kNotReadyExecutables[] = {L"velora-files.exe", L"velora-settings.exe"};
+constexpr const wchar_t* kNotReadyExecutables[] = {L"velora-settings.exe"};  // velora-files.exe reached G1 (Day 4)
 
 std::wstring FileNameOf(const std::wstring& path) {
     size_t slash = path.find_last_of(L"\\/");

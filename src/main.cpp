@@ -23,6 +23,7 @@
 #include "core/text.h"
 #include "apps/app_index.h"
 #include "apps/apps_grid.h"
+#include "apps/files_launch.h"
 #include "dock/dock.h"
 #include "menubar/menubar.h"
 #include "switch/restore.h"
@@ -94,6 +95,21 @@ std::string HandleRequest(std::string_view raw) {
         json::Value p;
         p.Set("visible", g_grid->Visible());
         return Reply(req, 0, p);
+    }
+    if (t == ipc::msg::kOpenFiles || t == ipc::msg::kOpenApp) {
+        // Files is an on-demand app: start it (or hand the folder to the window that is open).
+        const auto* p = req.Find("payload");
+        if (t == ipc::msg::kOpenApp) {
+            const auto* app = p ? p->Find("app") : nullptr;
+            if (!app || !app->IsString() || app->AsString() != "files") return Reply(req, 501, {}, "only the files app can be opened");
+        }
+        auto text = [&](const char* key) {
+            const auto* v = p ? p->Find(key) : nullptr;
+            return v && v->IsString() ? Utf8ToWide(v->AsString()) : std::wstring{};
+        };
+        std::wstring error;
+        if (!apps::LaunchFilesApp(text("path"), text("select"), &error)) return Reply(req, 501, {}, WideToUtf8(error));
+        return Reply(req, 0, self);
     }
 #ifdef VELORA_TESTING
     if (t == "debug_hang" && CurrentProfile().IsTest()) {
@@ -237,10 +253,10 @@ int ExitRunningShell() {
     return 0;
 }
 
-// `velora-shell --open-apps` / `--close-apps`: drive the Apps panel of the running shell (tests, no mouse).
-int SendAppsCommand(const char* type) {
+// `velora-shell --open-apps` / `--close-apps` / `--open-files [folder]`: drive the running shell (tests, no mouse).
+int SendCommand(const char* type, const json::Value& payload = {}) {
     std::string resp;
-    if (!ipc::Call(ShellPipeName(), ipc::MakeMessage("request", type, 1), &resp, 3000)) return 1;
+    if (!ipc::Call(ShellPipeName(), ipc::MakeMessage("request", type, 1, payload), &resp, 3000)) return 1;
     auto r = json::Parse(resp);
     const json::Value* s = r ? r->Find("status") : nullptr;
     return s && s->AsInt(-1) == 0 ? 0 : 5;
@@ -255,6 +271,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
 
     bool exitRequest = false, recoverOnly = false;
     const char* appsCommand = nullptr;
+    json::Value commandPayload;
     int argc = 0;
     if (LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc)) {
         for (int i = 1; i < argc; ++i) {
@@ -262,11 +279,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             else if (std::wstring(argv[i]) == L"--recover-only") recoverOnly = true;
             else if (std::wstring(argv[i]) == L"--open-apps") appsCommand = ipc::msg::kOpenApps;
             else if (std::wstring(argv[i]) == L"--close-apps") appsCommand = ipc::msg::kCloseApps;
+            else if (std::wstring(argv[i]) == L"--open-files") {
+                appsCommand = ipc::msg::kOpenFiles;
+                if (i + 1 < argc && std::wstring(argv[i + 1]).rfind(L"--", 0) != 0) commandPayload.Set("path", WideToUtf8(argv[++i]));
+            }
         }
         LocalFree(argv);
     }
     if (exitRequest) return ExitRunningShell();
-    if (appsCommand) return SendAppsCommand(appsCommand);
+    if (appsCommand) return SendCommand(appsCommand, commandPayload);
 
     if (CurrentProfile().IsTest() && DataDir().empty()) {
         log::Error("test profile without VELORA_DATA_DIR; refusing to start");

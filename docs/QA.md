@@ -46,3 +46,12 @@ desktop with nothing unsaved, and know where `velora-watchdog.exe --restore` and
 ## Multi-monitor / DPI (not yet automated)
 - [ ] 1, 2 and 3 monitors at mixed 100/150/200 %: bars and Dock on the primary monitor, correct size, no overlap with the other monitor.
 - [ ] Change scaling while running: bars resize and stay crisp.
+
+## Files (Day 4)
+- [ ] **(live)** Window: 216 pt sidebar (Favorites: Home, Desktop, Documents, Downloads, Pictures, Music, Videos; Drives), 52 pt toolbar with back/forward and the list/icon switch, traffic lights top-left (close/minimise/zoom, glyphs on hover, grey when inactive), rounded corners and shadow, drags by the toolbar, resizes from every edge, maximises without overhanging the monitor. Check light and dark mode and 100 / 150 / 200 %.
+- [ ] **(live)** List view: Name / Date Modified / Size / Kind headers sort (click again to flip); icons are the shell's; selection is accent blue when active, grey when inactive; wheel scrolls; icon view grid wraps with the window width.
+- [ ] **(live)** Keyboard: arrows, Home/End/PgUp/PgDn, Enter opens (folders navigate, files open in the default app), Backspace / Alt+Up goes up, Alt+Left/Right back/forward, F2 rename (name without extension selected, Enter commits, Esc cancels), Ctrl+A, Ctrl+C/X/V, Delete (Recycle Bin), Ctrl+Shift+N, Ctrl+1/2, F5, type-ahead.
+- [ ] **(live)** Copy in Files, paste in Explorer and the other way round; cut/paste moves. A paste that conflicts shows the OS replace/skip dialog; a protected folder shows the OS permission prompt.
+- [ ] **(live)** Drag a file from Files onto Explorer and back; drag onto a folder row, onto a sidebar entry and onto the breadcrumb; Ctrl copies, Shift moves, Esc cancels.
+- [ ] **(live)** Delete a file: it appears in the Recycle Bin. On a network drive the shell asks before deleting for good.
+- [ ] **(live)** Dock: the Files pin shows the Velora Files icon and launches; launching it again focuses the open window; closing the window leaves no velora-files.exe process.

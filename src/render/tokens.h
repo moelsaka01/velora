@@ -85,6 +85,18 @@ inline constexpr std::uint32_t kVeilUnblurred = 0xE03A3A3C;  // no wallpaper ima
 inline constexpr float kOpenFrom   = 0.94f;    // scale at the start of the open spring (working value)
 }  // namespace appspanel
 
+// Windows of Velora's own apps (Files, later Settings): docs/MACOS_UI_SPEC.md, "Windows, toolbar, sidebar" (measured unless noted).
+namespace window {
+inline constexpr float kSidebarWidth = 216.0f, kSidebarRowPitch = 32.0f;
+inline constexpr float kToolbarHeight = 52.0f, kToolbarControl = 36.0f;
+inline constexpr float kTrafficDiameter = 13.0f, kTrafficPitch = 23.0f, kTrafficLeft = 20.0f, kTrafficCenterY = 26.0f;
+inline constexpr float kCornerRadius = 16.0f;  // spec: 15.25 circular-equivalent; drawn by DWM (8 px system rounding) until a custom clip is added
+inline constexpr std::uint32_t kSidebarLight = 0xF5ECEBEA;  // rgb(236,235,234) at 96 %
+inline constexpr std::uint32_t kSidebarDark = 0xF528282A;   // estimate, unmeasured
+inline constexpr std::uint32_t kContentLight = 0xFFFFFFFF;  // measured
+inline constexpr std::uint32_t kContentDark = 0xFF1E1E20;   // estimate, unmeasured
+}  // namespace window
+
 // Blur radius (DIPs) for backdrop effects. Gaming mode forces blur off.
 namespace blur {
 inline constexpr float kNone = 0.0f, kLight = 12.0f, kMedium = 24.0f, kHeavy = 40.0f;
