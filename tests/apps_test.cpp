@@ -2,6 +2,8 @@
 // (read-only: AppsFolder + Start-menu shortcuts). Never launches anything.
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <string>
 
 #include "apps/app_index.h"
 #include "apps/apps_grid.h"
@@ -32,6 +34,36 @@ AppEntry E(const wchar_t* name, const wchar_t* exe = L"") {
 
 int main() {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+
+    // Start-menu .url shortcuts: games start through a protocol, web links are not apps.
+    {
+        wchar_t tmp[MAX_PATH];
+        GetTempPathW(MAX_PATH, tmp);
+        const std::filesystem::path dir = std::filesystem::path(tmp) / (L"velora-url-" + std::to_wstring(GetCurrentProcessId()));
+        std::filesystem::create_directories(dir);
+        // GetPrivateProfileString reads plain ANSI files: write ASCII.
+        auto write = [&](const wchar_t* file, const std::string& body) {
+            FILE* f = _wfopen((dir / file).c_str(), L"wb");
+            if (f) {
+                std::fputs(body.c_str(), f);
+                std::fclose(f);
+            }
+            return dir / file;
+        };
+        const auto ico = write(L"game.ico", "x");
+        const auto steam = write(L"Some Game.url", "[InternetShortcut]\r\nURL=steam://rungameid/12345\r\nIconFile=" + ico.string() + "\r\nIconIndex=0\r\n");
+        const auto web = write(L"Docs.url", "[InternetShortcut]\r\nURL=https://example.com/\r\n");
+        const auto bad = write(L"Broken.url", "garbage");
+        const auto noicon = write(L"Epic Thing.url", "[InternetShortcut]\r\nURL=com.epicgames.launcher://apps/x?action=launch\r\nIconFile=C:\\does\\not\\exist.ico\r\n");
+        auto s1 = ParseUrlShortcut(steam);
+        CHECK(s1 && s1->name == L"Some Game" && s1->launch == steam.wstring() && s1->icon == ico.wstring());
+        CHECK(!ParseUrlShortcut(web));
+        CHECK(!ParseUrlShortcut(bad));
+        auto s2 = ParseUrlShortcut(noicon);
+        CHECK(s2 && s2->icon == noicon.wstring());  // a missing IconFile falls back to the shortcut itself
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+    }
 
     // MatchScore ordering: prefix > word prefix > substring > subsequence > none.
     CHECK(MatchScore(L"", L"Anything") > 0);

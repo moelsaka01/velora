@@ -82,12 +82,40 @@ std::vector<AppEntry> ScanAppsFolder() {
     return out;
 }
 
+}  // namespace
+
+std::optional<AppEntry> ParseUrlShortcut(const std::filesystem::path& p) {
+    std::wstring name = p.stem().wstring();
+    if (name.empty() || IsNoiseShortcut(name)) return std::nullopt;
+    wchar_t url[2048] = {}, icon[MAX_PATH * 2] = {};
+    GetPrivateProfileStringW(L"InternetShortcut", L"URL", L"", url, static_cast<DWORD>(std::size(url)), p.c_str());
+    if (!url[0]) return std::nullopt;
+    const std::wstring u = Lower(url);
+    for (const wchar_t* web : {L"http:", L"https:", L"ftp:", L"file:", L"mailto:", L"javascript:"})
+        if (u.rfind(web, 0) == 0) return std::nullopt;
+    if (u.find(L':') == std::wstring::npos) return std::nullopt;
+    GetPrivateProfileStringW(L"InternetShortcut", L"IconFile", L"", icon, static_cast<DWORD>(std::size(icon)), p.c_str());
+    AppEntry e;
+    e.name = name;
+    e.launch = p.wstring();
+    std::error_code ec;
+    e.icon = icon[0] && std::filesystem::exists(icon, ec) ? std::wstring(icon) : e.launch;
+    return e;
+}
+
+namespace {
+
 void ScanLinkDir(const std::filesystem::path& dir, IShellLinkW* link, IPersistFile* file, std::vector<AppEntry>* out) {
     std::error_code ec;
     for (std::filesystem::recursive_directory_iterator it(dir, std::filesystem::directory_options::skip_permission_denied, ec), end;
          !ec && it != end; it.increment(ec)) {
         const auto& p = it->path();
-        if (Lower(p.extension().wstring()) != L".lnk") continue;
+        const std::wstring ext = Lower(p.extension().wstring());
+        if (ext == L".url") {  // games: Steam, Epic and others leave protocol shortcuts in the Start menu
+            if (auto e = ParseUrlShortcut(p)) out->push_back(std::move(*e));
+            continue;
+        }
+        if (ext != L".lnk") continue;
         std::wstring name = p.stem().wstring();
         if (IsNoiseShortcut(name)) continue;
         if (FAILED(file->Load(p.c_str(), STGM_READ))) continue;
