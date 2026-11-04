@@ -10,6 +10,7 @@
 #include "core/state_store.h"
 #include "switch/appbar.h"
 #include "switch/taskbar.h"
+#include "theming/window_theme.h"
 #include "wallpaper/wallpaper.h"
 
 namespace velora::sw {
@@ -121,6 +122,10 @@ RestoreResult RestoreWindowsDesktop(const RestoreOptions& opt) {
         HWND fg = reinterpret_cast<HWND>(static_cast<UINT_PTR>(state->foregroundHwnd));
         if (IsWindow(fg) && IsWindowVisible(fg) && !IsIconic(fg)) SetForegroundWindow(fg);
     }
+
+    // 5a. Windows themed through DWM attributes: put each attribute back (a no-op when nothing was themed). Also done in the
+    //     test profile (its own data dir), so the gate sees the same recovery path.
+    theming::RestoreFromBackup();
 
     // 5b. Wallpaper: put the user's own back (no-op unless Velora changed it and a backup exists).
     if (wallpaperThread.joinable()) wallpaperThread.join();

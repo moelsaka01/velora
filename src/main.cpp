@@ -29,6 +29,7 @@
 #include "search/search_hotkey.h"
 #include "search/search_panel.h"
 #include "switch/restore.h"
+#include "theming/window_theme.h"
 #include "switch/switch_manager.h"
 #include "ui/ui_common.h"
 #include "wallpaper/wallpaper.h"
@@ -52,6 +53,7 @@ search::SearchPanel* g_search = nullptr;
 constexpr int kHotkeySearch = 1;  // RegisterHotKey id of the Search hotkey
 dock::Dock* g_dock = nullptr;
 menubar::MenuBar* g_menuBar = nullptr;
+EventBus* g_bus = nullptr;
 constexpr UINT kMsgTrim = WM_APP + 43;  // the Apps panel closed: schedule the memory give-back
 constexpr UINT kMsgAppsChanged = WM_APP + 42;  // the app index was refreshed on its worker thread
 BurstDebounce g_taskbarDebounce(500);  // Explorer may broadcast TaskbarCreated several times in a burst
@@ -89,6 +91,10 @@ std::string HandleRequest(std::string_view raw) {
     if (t == ipc::msg::kEnter) return g_manager->Enter() ? Reply(req, 0, g_manager->Status()) : Reply(req, 500, {}, "enter failed");
     if (t == ipc::msg::kExit || t == ipc::msg::kRestore) {
         PostMessageW(g_window, WM_CLOSE, 0, 0);  // exit runs after this reply is sent
+        return Reply(req, 0, self);
+    }
+    if (t == ipc::msg::kSettingsChanged) {  // the Settings app wrote settings.json: modules re-read what they use
+        if (g_bus) g_bus->Post(EventType::SettingsChanged);
         return Reply(req, 0, self);
     }
     if (t == ipc::msg::kOpenApps || t == ipc::msg::kCloseApps) {
@@ -210,6 +216,8 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_DISPLAYCHANGE:
         case WM_SETTINGCHANGE:
             if (g_manager) g_manager->Reconcile();
+            if (msg == WM_SETTINGCHANGE && lp && g_bus && std::wstring_view(reinterpret_cast<const wchar_t*>(lp)) == L"ImmersiveColorSet")
+                g_bus->Post(EventType::ThemeChanged);
             break;
         case WM_QUERYENDSESSION:
             return TRUE;
@@ -368,6 +376,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     g_taskbarCreated = RegisterWindowMessageW(CurrentProfile().taskbarCreatedMessage.c_str());
 
     EventBus bus;
+    g_bus = &bus;
     sw::SwitchManager manager(bus, instance);
     manager.SetFatalHandler([] { PostMessageW(g_window, WM_CLOSE, 0, 0); });
     g_manager = &manager;
@@ -382,6 +391,27 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     ui::IconStore::Get().SetNotifyWindow(g_window);
 
     win::WindowTracker tracker(bus);
+    // Window theming through documented DWM attributes (no injection). Never in the test profile: tests must not touch the
+    // real desktop's windows. Everything it changed is restored on exit, and by recovery from theming_backup.json.
+    theming::WindowThemer themer;
+    bool themingActive = false;
+    auto themeWindow = [&](HWND h, bool elevated) {
+        if (themingActive && h) themer.Apply(h, elevated, tracker.FullscreenWindow() == h);
+    };
+    auto themeAll = [&] {
+        for (const auto& [h, w] : tracker.Windows()) themeWindow(h, !w.controllable);
+    };
+    for (EventType t : {EventType::WindowCreated, EventType::WindowUncloaked, EventType::WindowRestored, EventType::WindowActivated})
+        bus.Subscribe(t, [&](const Event& e) { themeWindow(reinterpret_cast<HWND>(static_cast<UINT_PTR>(e.window.hwnd)), e.window.elevated); });
+    bus.Subscribe(EventType::WindowDestroyed, [&](const Event& e) { themer.Forget(reinterpret_cast<HWND>(static_cast<UINT_PTR>(e.window.hwnd))); });
+    bus.Subscribe(EventType::ThemeChanged, [&](const Event&) {
+        if (themingActive) themer.Configure(theming::LoadConfig(), ui::SystemTheme() == tokens::Theme::Dark);
+    });
+    bus.Subscribe(EventType::SettingsChanged, [&](const Event&) {
+        if (!themingActive) return;
+        themer.Configure(theming::LoadConfig(), ui::SystemTheme() == tokens::Theme::Dark);
+        themeAll();  // windows that became eligible (setting switched on, exclusion removed)
+    });
     menubar::MenuBar::Actions menuActions;
     menuActions.exitVelora = [] { PostMessageW(g_window, WM_CLOSE, 0, 0); };
     menuActions.openSettings = [] {
@@ -417,8 +447,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         // Original Velora wallpaper per monitor (reversible: the original is backed up first and restored on
         // exit and by crash recovery). Never in the test profile: tests must not touch the real desktop.
         if (!CurrentProfile().IsTest() && wallpaper::Enabled()) wallpaper::ApplyVelora(ui::SystemTheme() == tokens::Theme::Dark);
+        if (!CurrentProfile().IsTest()) {
+            themingActive = true;
+            themer.Configure(theming::LoadConfig(), ui::SystemTheme() == tokens::Theme::Dark);
+        }
     });
     bus.Subscribe(EventType::Exiting, [&](const Event&) {
+        themingActive = false;
+        themer.RestoreAll();
         dock.Detach();
         menuBar.Detach();
     });
@@ -432,6 +468,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
     SetTimer(g_window, kTimerTick, ipc::kHeartbeatIntervalMs, nullptr);
     tracker.Start();
+    themeAll();  // windows that already existed when Velora started
 
     bool quit = false;
     while (!quit) {
@@ -454,6 +491,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     tracker.Stop();
     manager.Exit();
     g_manager = nullptr;
+    g_bus = nullptr;
     g_dock = nullptr;
     g_menuBar = nullptr;
     grid.Hide();
