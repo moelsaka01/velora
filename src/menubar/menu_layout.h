@@ -17,6 +17,7 @@ struct MenuItem {
     bool enabled = true;
     bool checked = false;     // a tick in front of the label (app menus)
     bool submenu = false;     // an arrow at the right edge; choosing the row opens what is behind it
+    bool keepOpen = false;    // choosing the row leaves the popup open: the owner swaps its content with MenuPopup::Update()
     std::wstring shortcut;    // right-aligned, dimmed ("Ctrl+N")
 };
 

@@ -597,7 +597,7 @@ void MenuBar::OnMenuAnswers() {
             LayoutTitles();
             Invalidate();
         } else {
-            if (a.id != expandId_ || a.hwnd != menuTarget_ || openTitle_ < 0 || openTitle_ >= static_cast<int>(appBar_.titles.size())) continue;
+            if (a.id != expandId_ || a.hwnd != menuTarget_ || !menuOpen_ || openTitle_ < 0 || openTitle_ >= static_cast<int>(appBar_.titles.size())) continue;
             if (!a.ok || a.items.empty()) {
                 log::Info("app menus: nothing to show for this menu");
                 menuOpen_ = false;
@@ -655,6 +655,7 @@ void MenuBar::ShowLevel() {
         m.enabled = it.enabled;
         m.checked = it.checked;
         m.submenu = it.submenu;
+        m.keepOpen = it.submenu;
         m.shortcut = it.shortcut;
         items.push_back(std::move(m));
     }
@@ -664,9 +665,14 @@ void MenuBar::ShowLevel() {
     const float top = (tokens::size::kMenuBarHeight + tm::kCapsuleHeight) / 2 + tm::kPopupGap;
     const int title = openTitle_;
     menuOpen_ = true;
+    if (popup_.IsOpen() && openTitle_ == popupTitle_) {  // drilling in or back: swap the rows of the open popup
+        popup_.Update(std::move(items), [this](unsigned id) { RunAppItem(id); });
+        return;
+    }
     reopening_ = true;  // closing the previous level must not clear the open title
     if (popup_.IsOpen()) popup_.Close();
     reopening_ = false;
+    popupTitle_ = title;
     popup_.SetOnHorizontal([this, title](int dir) {
         const int n = static_cast<int>(appBar_.titles.size());
         for (int step = 1; step <= n; ++step) {

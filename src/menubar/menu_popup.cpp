@@ -40,9 +40,7 @@ MenuPopup::~MenuPopup() {
     Close();
 }
 
-bool MenuPopup::Open(HWND owner, int x, int y, std::vector<MenuItem> items, std::function<void(unsigned)> onChoose,
-                     std::function<void()> onClosed) {
-    if (hwnd_ || !RegisterOnce(instance_, &MenuPopup::WndProc)) return false;
+void MenuPopup::ApplyItems(std::vector<MenuItem> items) {
     items_ = std::move(items);
     layout_ = ComputeMenuLayout(items_);
     // App menus have long labels and shortcuts: widen the popup to fit (never narrower than the measured 201.5 pt).
@@ -61,6 +59,12 @@ bool MenuPopup::Open(HWND owner, int x, int y, std::vector<MenuItem> items, std:
         if (anyChecked_) need += 14;
         layout_.width = std::min(need, 460.0f);
     }
+}
+
+bool MenuPopup::Open(HWND owner, int x, int y, std::vector<MenuItem> items, std::function<void(unsigned)> onChoose,
+                     std::function<void()> onClosed) {
+    if (hwnd_ || !RegisterOnce(instance_, &MenuPopup::WndProc)) return false;
+    ApplyItems(std::move(items));
     onChoose_ = std::move(onChoose);
     onClosed_ = std::move(onClosed);
     selected_ = pressed_ = -1;
@@ -100,6 +104,27 @@ bool MenuPopup::Open(HWND owner, int x, int y, std::vector<MenuItem> items, std:
     return true;
 }
 
+bool MenuPopup::Update(std::vector<MenuItem> items, std::function<void(unsigned)> onChoose) {
+    if (!hwnd_) return false;
+    ApplyItems(std::move(items));
+    onChoose_ = std::move(onChoose);
+    selected_ = pressed_ = -1;
+    const float s = ui::Scale(dpi_);
+    const int w = static_cast<int>(std::lround(layout_.width * s)), h = static_cast<int>(std::lround(layout_.height * s));
+    RECT r{};
+    GetWindowRect(hwnd_, &r);
+    MONITORINFO mi{sizeof mi};
+    GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi);
+    int x = static_cast<int>(PopupLeft(static_cast<float>(r.left), static_cast<float>(w), static_cast<float>(mi.rcWork.left),
+                                       static_cast<float>(mi.rcWork.right)));
+    int y = std::min<int>(r.top, mi.rcWork.bottom - h);
+    SetWindowPos(hwnd_, nullptr, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER);
+    host_.Resize(static_cast<UINT>(w), static_cast<UINT>(h));
+    wall_.Reset();  // the blurred wallpaper behind the popup depends on its rectangle
+    Draw();
+    return true;
+}
+
 void MenuPopup::Close() {
     if (!hwnd_) return;
     HWND h = hwnd_;
@@ -117,6 +142,11 @@ void MenuPopup::Close() {
 void MenuPopup::Choose(int index) {
     if (index < 0 || index >= static_cast<int>(items_.size())) return;
     unsigned id = items_[index].id;
+    if (items_[index].keepOpen) {  // submenu / back: the owner replaces the rows through Update()
+        auto stay = onChoose_;
+        if (stay) stay(id);
+        return;
+    }
     auto choose = std::move(onChoose_);
     Close();  // the popup is gone before the command runs (a command may open a modal dialog)
     if (choose) choose(id);

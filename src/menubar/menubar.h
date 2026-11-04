@@ -112,6 +112,7 @@ private:
     std::vector<int> pendingPath_;    // UIA path of the submenu being fetched
     std::wstring pendingLabel_;
     bool reopening_ = false;
+    int popupTitle_ = -1;  // the title whose popup is open (Update() is only valid for the same title)
     HWND targetOverride_ = nullptr;
 
     EventBus& bus_;
