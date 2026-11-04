@@ -243,7 +243,7 @@ int main() {
     // Hidden pins: missing files; Apps item, shell targets and existing files stay.
     {
         DockApp files = ExeApp(L"Files", L"C:\\velora\\velora-files.exe");
-        DockApp settings = ExeApp(L"Settings", L"C:\\velora\\VELORA-SETTINGS.EXE");
+        DockApp settings = ExeApp(L"Settings", L"C:\\velora\\velora-settings.exe");
         DockApp present = ExeApp(L"Present", L"C:\\p\\present.exe");
         DockApp gone = ExeApp(L"Gone", L"C:\\p\\gone.exe");
         DockApp store = uwp;

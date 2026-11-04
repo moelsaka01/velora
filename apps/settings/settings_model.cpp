@@ -92,7 +92,7 @@ std::vector<Page> BuildPages() {
                         {"Alt+Shift+Space", L"Alt+Shift+Space"},
                         {"Ctrl+Shift+Space", L"Ctrl+Shift+Space"},
                         {"none", L"None"}}),
-                  Note(L"Hotkey changes apply when Velora restarts.")}});
+                  Note(L"Changes apply at once.")}});
     p.push_back({L"Gaming mode",
                  {Pick("gaming.mode", L"Gaming mode", L"Turns animations, blur and background work off while a game is in front. Velora never touches the game itself.", "auto",
                        {{"auto", L"Automatic"}, {"on", L"Always on"}, {"off", L"Off"}}),
