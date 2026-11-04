@@ -196,6 +196,7 @@ int main(int, char** argv) {
     }
     DestroyWindow(host);
     DeleteFileW(marker.c_str());
+    if (g_failed) DumpLogTail();
     std::printf("%s: %d checks, %d failed\n", g_failed ? "FAIL" : "PASS", g_checks, g_failed);
     return rc;
 }
