@@ -45,6 +45,22 @@ bool MenuPopup::Open(HWND owner, int x, int y, std::vector<MenuItem> items, std:
     if (hwnd_ || !RegisterOnce(instance_, &MenuPopup::WndProc)) return false;
     items_ = std::move(items);
     layout_ = ComputeMenuLayout(items_);
+    // App menus have long labels and shortcuts: widen the popup to fit (never narrower than the measured 201.5 pt).
+    {
+        anyChecked_ = false;
+        IDWriteTextFormat* f = ui::Format(tm::kFontSize);
+        float need = layout_.width;
+        for (const MenuItem& it : items_) {
+            anyChecked_ = anyChecked_ || it.checked;
+            if (it.separator) continue;
+            float w = 2 * tm::kPopupPadding + tm::kRowTextInset + ui::MeasureWidth(it.label, f) + 18;
+            if (!it.shortcut.empty()) w += 28 + ui::MeasureWidth(it.shortcut, f);
+            if (it.submenu) w += 14;
+            need = std::max(need, w);
+        }
+        if (anyChecked_) need += 14;
+        layout_.width = std::min(need, 460.0f);
+    }
     onChoose_ = std::move(onChoose);
     onClosed_ = std::move(onClosed);
     selected_ = pressed_ = -1;
@@ -91,6 +107,7 @@ void MenuPopup::Close() {
     host_.Shutdown();
     DestroyWindow(h);
     items_.clear();
+    onHorizontal_ = nullptr;
     auto closed = std::move(onClosed_);
     onClosed_ = nullptr;
     onChoose_ = nullptr;
@@ -166,7 +183,25 @@ void MenuPopup::Draw() {
             dc->FillRoundedRectangle(D2D1::RoundedRect(row, tm::kHighlightRadius, tm::kHighlightRadius), brush.Get());
         }
         brush->SetColor(hot ? D2D1::ColorF(1, 1, 1, 1) : ui::Rgba(it.enabled ? p.text : p.textSecondary));
-        ui::DrawLabel(dc, brush.Get(), it.label, D2D1::RectF(row.left + tm::kRowTextInset, top, row.right - 6, bottom), fmt);
+        const float mid = (top + bottom) / 2;
+        float right = row.right - 6;
+        if (it.submenu) {  // arrow
+            dc->DrawLine(D2D1::Point2F(row.right - 15, mid - 4), D2D1::Point2F(row.right - 11, mid), brush.Get(), 1.4f);
+            dc->DrawLine(D2D1::Point2F(row.right - 11, mid), D2D1::Point2F(row.right - 15, mid + 4), brush.Get(), 1.4f);
+            right -= 14;
+        }
+        if (!it.shortcut.empty()) {
+            const float sw = ui::MeasureWidth(it.shortcut, fmt);
+            brush->SetColor(hot ? D2D1::ColorF(1, 1, 1, 0.85f) : ui::Rgba(p.textSecondary));
+            ui::DrawLabel(dc, brush.Get(), it.shortcut, D2D1::RectF(right - sw - 8, top, right, bottom), fmt, DWRITE_TEXT_ALIGNMENT_TRAILING);
+            right -= sw + 20;
+            brush->SetColor(hot ? D2D1::ColorF(1, 1, 1, 1) : ui::Rgba(it.enabled ? p.text : p.textSecondary));
+        }
+        if (it.checked) {  // tick
+            dc->DrawLine(D2D1::Point2F(row.left + 9, mid), D2D1::Point2F(row.left + 12.5f, mid + 3.5f), brush.Get(), 1.6f);
+            dc->DrawLine(D2D1::Point2F(row.left + 12.5f, mid + 3.5f), D2D1::Point2F(row.left + 18, mid - 4), brush.Get(), 1.6f);
+        }
+        ui::DrawLabel(dc, brush.Get(), it.label, D2D1::RectF(row.left + tm::kRowTextInset + (anyChecked_ ? 14.0f : 0.0f), top, right, bottom), fmt);
     }
     if (!host_.EndDraw()) {
         log::Warn("menu popup: present failed; closing");
@@ -228,6 +263,21 @@ LRESULT MenuPopup::OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
             switch (wp) {
                 case VK_ESCAPE: Close(); return 0;
                 case VK_RETURN: Choose(selected_); return 0;
+                case VK_RIGHT:
+                    if (selected_ >= 0 && items_[selected_].submenu) Choose(selected_);
+                    else if (onHorizontal_) {
+                        auto cb = onHorizontal_;
+                        Close();
+                        cb(1);
+                    }
+                    return 0;
+                case VK_LEFT:
+                    if (onHorizontal_) {
+                        auto cb = onHorizontal_;
+                        Close();
+                        cb(-1);
+                    }
+                    return 0;
                 case VK_DOWN: selected_ = NextSelectable(items_, selected_, 1); break;
                 case VK_UP: selected_ = NextSelectable(items_, selected_, -1); break;
                 case VK_HOME: selected_ = NextSelectable(items_, -1, 1); break;
