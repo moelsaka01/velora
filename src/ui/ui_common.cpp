@@ -561,12 +561,15 @@ struct IconStore::Impl {
             auto px = std::make_shared<Pixels>();
             std::string how, trace;
             const std::string name = WideToUtf8(key.first) + " @" + std::to_string(key.second);
-            if (LoadBuiltinIcon(key.first, key.second, px.get())) {
+            // "raw:<path>" asks for the shell icon as it is (file and folder icons in Search), without the app tile.
+            const bool raw = key.first.rfind(L"raw:", 0) == 0;
+            const std::wstring source = raw ? key.first.substr(4) : key.first;
+            if (!raw && LoadBuiltinIcon(key.first, key.second, px.get())) {
                 how = "velora icon";  // our own artwork for a few inbox apps; already a filled tile
                 log::Info("icons: " + name + " via " + how);
-            } else if (LoadIconPixels(key.first, px.get(), &how, false, key.second, &trace)) {
+            } else if (LoadIconPixels(source, px.get(), &how, false, key.second, &trace)) {
                 // macOS 27 look: anything that is not already a filled rounded square goes on a neutral tile.
-                if (EnsureTile(px.get())) how += " +tile";
+                if (!raw && EnsureTile(px.get())) how += " +tile";
                 log::Info("icons: " + name + " via " + how);
             } else {
                 log::Warn("icons: no icon found for " + name + " (" + trace + "); drawing the letter tile");

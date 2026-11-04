@@ -55,3 +55,10 @@ desktop with nothing unsaved, and know where `velora-watchdog.exe --restore` and
 - [ ] **(live)** Drag a file from Files onto Explorer and back; drag onto a folder row, onto a sidebar entry and onto the breadcrumb; Ctrl copies, Shift moves, Esc cancels.
 - [ ] **(live)** Delete a file: it appears in the Recycle Bin. On a network drive the shell asks before deleting for good.
 - [ ] **(live)** Dock: the Files pin shows the Velora Files icon and launches; launching it again focuses the open window; closing the window leaves no velora-files.exe process.
+
+## Search (Day 4)
+- [ ] **(live)** Hotkey (Alt+Space, or Ctrl+Space when another program owns Alt+Space - check `velora.log` for the `search: hotkey ... registered` line) opens a 520 pt pill 16 % down the screen with the text caret blinking; Esc, clicking outside or switching windows closes it; the Velora menu > Search opens it too.
+- [ ] **(live)** Typing "note" shows Applications first, then Folders / Documents ...; Up/Down move through the rows (headers skipped), Enter opens (app, file in its default app, folder in Files), Ctrl+Enter reveals a file in Files with the item highlighted. Icons fill in; file icons are plain shell icons (no tile).
+- [ ] **(live)** Stop the Windows Search service (or disable it) and search again: apps still found, the panel says "Windows Search is turned off. Showing apps only."; start it again and files return.
+- [ ] **(live)** Look: pill and results are dark frosted glass over a blurred wallpaper, spring open with no overshoot, check light/dark wallpaper and 100 / 150 / 200 % scaling.
+- [ ] **(live)** `settings.json` `{"search":{"hotkey":"Ctrl+Alt+Space"}}` changes the hotkey after restarting Velora.

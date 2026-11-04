@@ -39,6 +39,7 @@ public:
         std::function<void()> exitVelora;
         std::function<void()> openSettings;
         std::function<void()> openApps;
+        std::function<void()> openSearch;
     };
 
     MenuBar(EventBus& bus, win::WindowTracker& tracker, Actions actions);

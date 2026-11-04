@@ -97,6 +97,17 @@ inline constexpr std::uint32_t kContentLight = 0xFFFFFFFF;  // measured
 inline constexpr std::uint32_t kContentDark = 0xFF1E1E20;   // estimate, unmeasured
 }  // namespace window
 
+// Search panel (docs/MACOS_UI_SPEC.md, "Spotlight"; measured, veils low confidence).
+namespace searchpanel {
+inline constexpr float kWidth = 520.0f, kPillHeight = 86.5f, kGap = 10.5f, kResultsMaxHeight = 410.0f;
+inline constexpr float kRowHeight = 48.0f, kHeaderHeight = 28.0f, kPanelPad = 8.0f;  // rows / headers: working values (spec: ~64 pitch, low confidence)
+inline constexpr float kResultsRadius = 28.0f;  // spec: 41 or more for the 410 pt panel; clamped to the panel height / 2 when it is short
+inline constexpr float kBlurSigma = 20.0f;
+inline constexpr std::uint32_t kPillVeil = 0xD119191C;
+inline constexpr std::uint32_t kResultsVeil = 0x9E3C3C3F;  // rgb(60,60,63) at 62 %: neutral (the fitted brown was the screenshot wallpaper)
+inline constexpr std::uint32_t kVeilUnblurred = 0xEE2A2A2C;
+}  // namespace searchpanel
+
 // Blur radius (DIPs) for backdrop effects. Gaming mode forces blur off.
 namespace blur {
 inline constexpr float kNone = 0.0f, kLight = 12.0f, kMedium = 24.0f, kHeavy = 40.0f;
