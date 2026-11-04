@@ -665,6 +665,7 @@ void MenuBar::ShowLevel() {
     const float top = (tokens::size::kMenuBarHeight + tm::kCapsuleHeight) / 2 + tm::kPopupGap;
     const int title = openTitle_;
     menuOpen_ = true;
+    log::Info("app menus: show level depth=" + std::to_string(stack_.size()) + " items=" + std::to_string(items.size()) + " open=" + std::to_string(popup_.IsOpen()) + " title=" + std::to_string(openTitle_) + " popupTitle=" + std::to_string(popupTitle_));
     if (popup_.IsOpen() && openTitle_ == popupTitle_) {  // drilling in or back: swap the rows of the open popup
         popup_.Update(std::move(items), [this](unsigned id) { RunAppItem(id); });
         return;
@@ -699,6 +700,7 @@ void MenuBar::ShowLevel() {
 }
 
 void MenuBar::RunAppItem(unsigned id) {
+    log::Info("app menus: choose id=" + std::to_string(id) + " depth=" + std::to_string(stack_.size()) + (menus_ ? "" : " (no menus)"));
     if (stack_.empty() || !menus_) return;
     if (id == kBackItem) {
         stack_.pop_back();

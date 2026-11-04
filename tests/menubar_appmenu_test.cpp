@@ -8,7 +8,12 @@
 #include <functional>
 #include <string>
 
+#include <fstream>
+#include <vector>
+
 #include "core/event_bus.h"
+#include "core/log.h"
+#include "core/runtime.h"
 #include "menubar/menubar.h"
 #include "test_process.h"
 #include "windows/window_tracker.h"
@@ -56,7 +61,17 @@ void Key(WPARAM vk) {
 
 }  // namespace
 
+// On failure CI shows what the menu bar logged (the log is a file otherwise nobody reads).
+void DumpLogTail() {
+    std::ifstream in(velora::LogDir() / L"menubar_appmenu_test.log");
+    std::vector<std::string> lines;
+    for (std::string l; std::getline(in, l);) lines.push_back(l);
+    std::printf("---- log tail ----\n");
+    for (size_t i = lines.size() > 60 ? lines.size() - 60 : 0; i < lines.size(); ++i) std::printf("%s\n", lines[i].c_str());
+}
+
 int main(int, char** argv) {
+    velora::log::Init("menubar_appmenu_test");
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
