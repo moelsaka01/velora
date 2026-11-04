@@ -5,6 +5,7 @@
 
 #include "apps/app_index.h"
 #include "apps/apps_grid.h"
+#include "apps/files_launch.h"
 #include "core/win.h"
 
 using namespace velora::apps;
@@ -41,6 +42,12 @@ int main() {
     CHECK(prefix > word && word > sub && sub > subseq && subseq > 0);
     CHECK(MatchScore(L"zzz", L"Notepad") == 0);
     CHECK(MatchScore(L"NOTE", L"notepad") == prefix);  // case-insensitive
+
+    // velora-files command line: quoting survives spaces and a trailing backslash.
+    CHECK(FilesCommandLine(L"C:\\v\\velora-files.exe", L"", L"") == L"\"C:\\v\\velora-files.exe\"");
+    CHECK(FilesCommandLine(L"C:\\v\\f.exe", L"C:\\My Docs", L"") == L"\"C:\\v\\f.exe\" \"C:\\My Docs\"");
+    CHECK(FilesCommandLine(L"C:\\v\\f.exe", L"C:\\", L"") == L"\"C:\\v\\f.exe\" \"C:\\\\\"");
+    CHECK(FilesCommandLine(L"f.exe", L"ignored", L"C:\\a b\\c.txt") == L"\"f.exe\" --select \"C:\\a b\\c.txt\"");
 
     CHECK(IsNoiseShortcut(L"Uninstall Foo"));
     CHECK(IsNoiseShortcut(L"Foo Readme"));

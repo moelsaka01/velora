@@ -10,7 +10,7 @@
     "v": { "const": 1 },
     "kind": { "enum": ["request", "response", "event"] },
     "id": { "type": "integer", "minimum": 0, "description": "Correlates response to request." },
-    "type": { "enum": ["hello", "heartbeat", "get_state", "enter", "exit", "disarm", "restore", "open_app", "settings_changed", "open_apps", "close_apps"] },
+    "type": { "enum": ["hello", "heartbeat", "get_state", "enter", "exit", "disarm", "restore", "open_app", "settings_changed", "open_apps", "close_apps", "open_files"] },
     "status": { "type": "integer", "description": "Responses only. 0 ok, 400 bad request, 500 internal, 501 unsupported, 505 version mismatch." },
     "error": { "type": "string" },
     "payload": { "type": "object" }
@@ -27,6 +27,7 @@
     "open_app": { "app": ["files", "settings"], "path": "string (optional)" },
     "settings_changed": { "keys": "array of string" },
     "open_apps": {},
-    "close_apps": {}
+    "close_apps": {},
+    "open_files": { "path": "string (optional folder; the user's home by default)", "select": "string (optional item to highlight)" }
   }
 }
