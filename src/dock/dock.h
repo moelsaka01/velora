@@ -100,6 +100,7 @@ private:
     std::vector<float> scale_, scaleTarget_;  // per item: current (spring) and target magnification
     std::vector<render::AnimationEngine::Id> scaleAnim_;
     bool hoverActive_ = false, regionFull_ = false, regionSet_ = false;
+    bool magnify_ = true;  // settings.json dock.magnification
     Microsoft::WRL::ComPtr<ID2D1Bitmap> wall_;  // blurred wallpaper behind the window (window-sized); null: none
     bool wallDirty_ = true;
     LONG wallMonitorLeft_ = 0;  // screen x of the bitmap's left edge (the monitor's left)

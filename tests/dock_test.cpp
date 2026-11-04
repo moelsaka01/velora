@@ -240,18 +240,18 @@ int main() {
     std::vector<DockApp> junk;
     CHECK(PinnedFromJson("{\"dock\":{\"pinned\":[{\"name\":\"\"},{\"x\":1},5]}}", &junk) && junk.empty());
 
-    // Hidden pins: missing files and Velora's own not-yet-G1 apps (Settings); Apps item, shell targets and existing files stay.
+    // Hidden pins: missing files; Apps item, shell targets and existing files stay.
     {
         DockApp files = ExeApp(L"Files", L"C:\\velora\\velora-files.exe");
-        DockApp settings = ExeApp(L"Settings", L"C:\\velora\\VELORA-SETTINGS.EXE");
+        DockApp settings = ExeApp(L"Settings", L"C:\\velora\\velora-settings.exe");
         DockApp present = ExeApp(L"Present", L"C:\\p\\present.exe");
         DockApp gone = ExeApp(L"Gone", L"C:\\p\\gone.exe");
         DockApp store = uwp;
         store.launch = L"shell:AppsFolder\\Microsoft.Calc!App";
         auto exists = [](const std::wstring& p) { return p == L"C:\\p\\present.exe" || p.find(L"velora-") != std::wstring::npos; };
         auto vis = VisiblePinned({internal, files, present, gone, settings, store}, exists);
-        CHECK(vis.size() == 4);  // Files is G1 now; Settings is still a stub
-        CHECK(vis[0].internalApps && vis[1].name == L"Files" && vis[2].name == L"Present" && vis[3].name == store.name);
+        CHECK(vis.size() == 5);  // Files and Settings are G1 now; only missing files are hidden
+        CHECK(vis[0].internalApps && vis[1].name == L"Files" && vis[2].name == L"Present" && vis[3].name == L"Settings" && vis[4].name == store.name);
     }
 
     auto defaults = DefaultPinned();
