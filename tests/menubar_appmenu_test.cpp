@@ -119,7 +119,9 @@ int main(int, char** argv) {
 
             // settle: after a popup was dismissed by a click the bar ignores a click on that title for 250 ms (that click is the one that
             // closed it). After a command ran there is nothing to ignore, so those clicks pass settle=false and must open at once.
-            auto click = [&](const D2D1_RECT_F& r, bool settle = true) {
+            auto click = [&](int titleIndex, bool settle = true) {
+                D2D1_RECT_F r{};  // fresh every time: the active-app label (and so the titles) moves when a command brings the app forward
+                bar.TitleRectDip(titleIndex, &r);
                 if (settle) Sleep(300);
                 const LPARAM pt = MAKELPARAM(static_cast<int>((r.left + r.right) / 2 * s), static_cast<int>(15 * s));
                 SendMessageW(host, WM_MOUSEMOVE, 0, pt);
@@ -127,7 +129,7 @@ int main(int, char** argv) {
             };
 
             // Click File: the popup opens under it.
-            click(file);
+            click(0);
             CHECK(Pump([&] { return bar.AppMenuPopupOpen() && PopupWindow() != nullptr; }));
             CHECK(bar.OpenTitleIndex() == 0);
             RECT pr{};
@@ -141,7 +143,7 @@ int main(int, char** argv) {
             CHECK(Pump([&] { return !bar.AppMenuPopupOpen(); }));
 
             // Submenu: File > Recent drills in, has a way back, runs "two.txt".
-            click(file, false);  // right after a command: must reopen without waiting
+            click(0, false);  // right after a command: must reopen without waiting
             CHECK(Pump([&] { return bar.AppMenuPopupOpen() && PopupWindow() != nullptr; }));
             Key(VK_DOWN);  // New
             Key(VK_DOWN);  // Open...
@@ -163,7 +165,7 @@ int main(int, char** argv) {
             CHECK(testproc::WaitMarker(marker, "cmd 112"));
 
             // Right moves to the next title while a menu is open.
-            click(file, false);
+            click(0, false);
             CHECK(Pump([&] { return bar.AppMenuPopupOpen() && PopupWindow() != nullptr; }));
             Key(VK_RIGHT);
             CHECK(Pump([&] { return bar.OpenTitleIndex() == 1 && PopupWindow() != nullptr; }));
@@ -171,7 +173,7 @@ int main(int, char** argv) {
             CHECK(Pump([&] { return !bar.AppMenuPopupOpen(); }));
 
             // A command in the bar itself runs without a popup.
-            click(run);
+            click(3);
             CHECK(testproc::WaitMarker(marker, "cmd 400"));
             CHECK(!bar.AppMenuPopupOpen());
 
