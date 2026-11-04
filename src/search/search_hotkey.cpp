@@ -21,6 +21,10 @@ HotkeyChoice RegisterSearchHotkey(HWND hwnd, int id, const std::wstring& configu
     HotkeyChoice choice;
     std::vector<std::pair<Hotkey, bool>> candidates;
     Hotkey custom;
+    if (configured == L"none") {  // the user turned the hotkey off in Settings; Search stays reachable from the Velora menu
+        log::Info("search: hotkey disabled in settings");
+        return choice;
+    }
     if (!configured.empty()) {
         if (ParseHotkey(configured, &custom)) candidates.push_back({custom, true});
         else log::Warn("search: ignoring the configured hotkey \"" + WideToUtf8(configured) + "\" (not a modifier + key combination)");
