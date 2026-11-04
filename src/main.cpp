@@ -19,6 +19,7 @@
 #include "core/json.h"
 #include "core/log.h"
 #include "core/runtime.h"
+#include "core/settings_file.h"
 #include "core/state_store.h"
 #include "core/text.h"
 #include "apps/app_index.h"
@@ -26,6 +27,8 @@
 #include "apps/files_launch.h"
 #include "dock/dock.h"
 #include "menubar/menubar.h"
+#include "overview/overview.h"
+#include "search/search_core.h"
 #include "search/search_hotkey.h"
 #include "search/search_panel.h"
 #include "switch/restore.h"
@@ -42,6 +45,7 @@ using namespace velora;
 constexpr UINT_PTR kTimerTick = 1;          // heartbeat + reconcile, 1 Hz
 constexpr UINT_PTR kTimerRehideEarly = 2;   // after TaskbarCreated
 constexpr UINT_PTR kTimerRehideLate = 3;
+constexpr UINT_PTR kTimerHotCorner = 6;  // polls the pointer for the Overview hot corner (only while enabled)
 constexpr UINT_PTR kTimerTrim = 5;  // memory give-back, a moment after the Apps panel closed
 constexpr UINT_PTR kTimerTaskbarTrailing = 4;  // trailing run of a TaskbarCreated burst
 
@@ -51,8 +55,11 @@ HWND g_window = nullptr;
 apps::AppsGrid* g_grid = nullptr;
 search::SearchPanel* g_search = nullptr;
 constexpr int kHotkeySearch = 1;  // RegisterHotKey id of the Search hotkey
+constexpr int kHotkeyOverview = 2;  // RegisterHotKey id of the Overview hotkey
 dock::Dock* g_dock = nullptr;
 menubar::MenuBar* g_menuBar = nullptr;
+overview::Overview* g_overview = nullptr;
+overview::HotCorner g_hotCorner;
 EventBus* g_bus = nullptr;
 constexpr UINT kMsgTrim = WM_APP + 43;  // the Apps panel closed: schedule the memory give-back
 constexpr UINT kMsgAppsChanged = WM_APP + 42;  // the app index was refreshed on its worker thread
@@ -96,6 +103,14 @@ std::string HandleRequest(std::string_view raw) {
     if (t == ipc::msg::kSettingsChanged) {  // the Settings app wrote settings.json: modules re-read what they use
         if (g_bus) g_bus->Post(EventType::SettingsChanged);
         return Reply(req, 0, self);
+    }
+    if (t == ipc::msg::kOpenOverview || t == ipc::msg::kCloseOverview) {
+        if (!g_overview) return Reply(req, 501, {}, "overview unavailable");
+        if (t == ipc::msg::kOpenOverview) g_overview->Show();
+        else g_overview->Hide();
+        json::Value p;
+        p.Set("visible", g_overview->Visible());
+        return Reply(req, 0, p);
     }
     if (t == ipc::msg::kOpenApps || t == ipc::msg::kCloseApps) {
         // The pipe is pumped on the UI thread, so the panel can be driven directly.
@@ -186,6 +201,7 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_HOTKEY:
             if (wp == static_cast<WPARAM>(kHotkeySearch) && g_search) g_search->Toggle();
+            if (wp == static_cast<WPARAM>(kHotkeyOverview) && g_overview) g_overview->Toggle();
             return 0;
         case WM_TIMER:
             if (wp == kTimerTrim) {
@@ -197,6 +213,18 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 if (g_menuBar) g_menuBar->Trim();
                 log::Info("icon cache trimmed: " + std::to_string(freed >> 10) + " KB of decoded pixels released");
                 ui::TrimProcessMemory("apps panel closed");
+                return 0;
+            }
+            if (wp == kTimerHotCorner) {
+                if (!g_overview || g_overview->Visible()) return 0;
+                POINT pt{};
+                bool inCorner = false;
+                if (GetCursorPos(&pt)) {
+                    MONITORINFO mi{sizeof mi};
+                    const HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTONULL);
+                    inCorner = mon && GetMonitorInfoW(mon, &mi) && pt.x <= mi.rcMonitor.left + 1 && pt.y <= mi.rcMonitor.top + 1;
+                }
+                if (g_hotCorner.Feed(inCorner, GetTickCount64())) g_overview->Show();  // top-left corner of any monitor
                 return 0;
             }
             if (wp == kTimerTaskbarTrailing) {
@@ -308,6 +336,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             else if (std::wstring(argv[i]) == L"--recover-only") recoverOnly = true;
             else if (std::wstring(argv[i]) == L"--open-apps") appsCommand = ipc::msg::kOpenApps;
             else if (std::wstring(argv[i]) == L"--close-apps") appsCommand = ipc::msg::kCloseApps;
+            else if (std::wstring(argv[i]) == L"--open-overview") appsCommand = ipc::msg::kOpenOverview;
+            else if (std::wstring(argv[i]) == L"--close-overview") appsCommand = ipc::msg::kCloseOverview;
             else if (std::wstring(argv[i]) == L"--close-search") appsCommand = ipc::msg::kCloseSearch;
             else if (std::wstring(argv[i]) == L"--open-search") {
                 appsCommand = ipc::msg::kOpenSearch;
@@ -443,6 +473,24 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         const search::HotkeyChoice hk = search::RegisterSearchHotkey(g_window, kHotkeySearch, search::ConfiguredHotkey());
         searchPanel.SetHotkeyHint(hk.registered ? search::FormatHotkey(hk.key) : std::wstring{});
     }
+    overview::Overview overviewPanel(instance, tracker);
+    g_overview = &overviewPanel;
+    overviewPanel.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
+    // Overview: hotkey (settings.json overview.hotkey, default Ctrl+Alt+Up) and the optional hot corner (overview.hotCorner).
+    auto configureOverview = [&] {
+        UnregisterHotKey(g_window, kHotkeyOverview);
+        KillTimer(g_window, kTimerHotCorner);
+        if (CurrentProfile().IsTest()) return;
+        const std::string cfg = SettingString("overview.hotkey", "Ctrl+Alt+Up");
+        search::Hotkey k;
+        if (cfg != "none" && search::ParseHotkey(Utf8ToWide(cfg), &k)) {
+            if (RegisterHotKey(g_window, kHotkeyOverview, k.mods | MOD_NOREPEAT, k.vk)) log::Info("overview: hotkey " + cfg + " registered");
+            else log::Info("overview: hotkey " + cfg + " is not available (error " + std::to_string(GetLastError()) + ")");
+        }
+        if (SettingBool("overview.hotCorner", false)) SetTimer(g_window, kTimerHotCorner, 100, nullptr);
+    };
+    configureOverview();
+    bus.Subscribe(EventType::SettingsChanged, [&](const Event&) { configureOverview(); });
     manager.SetDockOptions(dock.Options(), dock.ReservedDip());
     bus.Subscribe(EventType::Entered, [&](const Event&) {
         menuBar.Attach(manager.MenuBarBar().Hwnd());
@@ -456,6 +504,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         }
     });
     bus.Subscribe(EventType::Exiting, [&](const Event&) {
+        overviewPanel.Hide();
         themingActive = false;
         themer.RestoreAll();
         dock.Detach();
@@ -500,6 +549,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     grid.Hide();
     g_grid = nullptr;
     search::UnregisterSearchHotkey(g_window, kHotkeySearch);
+    UnregisterHotKey(g_window, kHotkeyOverview);
+    KillTimer(g_window, kTimerHotCorner);
+    overviewPanel.Hide();
+    g_overview = nullptr;
     searchPanel.Hide();
     g_search = nullptr;
     ui::IconStore::Get().Shutdown();

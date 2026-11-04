@@ -20,6 +20,7 @@ int main() {
     check(ParseHotkey(L"ctrl + shift + k", &h) && h.mods == (kModControl | kModShift) && h.vk == 'K', "case and blanks");
     check(ParseHotkey(L"Win+F2", &h) && h.mods == kModWin && h.vk == 0x71, "function key");
     check(ParseHotkey(L"Ctrl+Alt+7", &h) && h.vk == '7', "digit");
+    check(ParseHotkey(L"Ctrl+Alt+Up", &h) && h.mods == (kModControl | kModAlt) && h.vk == 0x26 && FormatHotkey(h) == L"Ctrl+Alt+Up", "arrow key");
     check(!ParseHotkey(L"Space", &h), "a bare key would steal typing");
     check(!ParseHotkey(L"Alt+", &h) && !ParseHotkey(L"", &h) && !ParseHotkey(L"Alt+Banana", &h) && !ParseHotkey(L"Foo+K", &h), "garbage");
     check(!ParseHotkey(L"Alt+F13", &h) && !ParseHotkey(L"Alt+F0", &h), "function keys F1-F12 only");
