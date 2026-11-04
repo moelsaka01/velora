@@ -29,6 +29,12 @@ Deadline: a working release candidate within **8 calendar days**. Correctness an
 - **Exit:** returns to Windows instantly with all app state intact.
 - **Naming:** use original names only. Never use "Mac", "macOS", "Finder", "Spotlight", "Mission Control", or "Launchpad" in the UI or binary names. A phrase like "macOS-inspired" in docs is fine.
 
+### 1.1 Release levels (decided 2026-11-05)
+
+- **Level 1 = Velora v1.0: a blend of Windows and macOS, not a full transformation.** Dock, global menu bar, launcher, Files, Search, Overview, Control Center, Settings, and window theming through documented DWM attributes (no injection, no reparenting, no subclassing of other apps' windows). Windows apps keep their own title bars and behavior.
+- **Level 2 = Velora v2.0: the complete Windows-to-macOS transformation**, including opt-in injected title bars and deeper window chrome. Planned for late 2026 / early 2027. Level 2 work does not start before v1.0 ships, and the §0.8 stability rules (no injection by default) are relaxed only for explicitly opt-in, per-app, reversible features designed and reviewed in v2.0.
+- Everything in this file describes v1.0 scope unless a section says "v2.0". Anything that needs injection is v2.0.
+
 ---
 
 ## 2. ARCHITECTURE (FINAL)
