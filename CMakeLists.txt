@@ -162,9 +162,12 @@ foreach(svg ${VELORA_SVGS})
 endforeach()
 string(APPEND VELORA_SVG_CPP "}  // namespace velora::ui\n")
 file(WRITE ${CMAKE_BINARY_DIR}/generated/builtin_icons_data.cpp "${VELORA_SVG_CPP}")
-add_library(velora_ui STATIC src/ui/ui_common.cpp src/ui/icon_tile.cpp src/ui/builtin_icons.cpp
+add_library(velora_ui STATIC src/ui/ui_common.cpp src/ui/window_chrome.cpp src/ui/icon_tile.cpp src/ui/builtin_icons.cpp
             ${CMAKE_BINARY_DIR}/generated/builtin_icons_data.cpp)
 target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version shell32 ole32 windowscodecs psapi d3d11 dxgi d2d1 shlwapi)
+add_executable(chrome_test tests/chrome_test.cpp)
+target_link_libraries(chrome_test PRIVATE velora_ui)
+add_test(NAME chrome_test COMMAND chrome_test)
 # The Dock's pure geometry and blur maths (no windows.h), shared with the wallpaper backdrop.
 add_library(velora_dock_layout STATIC src/dock/dock_layout.cpp)
 target_link_libraries(velora_dock_layout PUBLIC velora_tokens)

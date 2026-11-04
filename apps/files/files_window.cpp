@@ -1,4 +1,5 @@
 #include "files/files_window.h"
+#include "ui/window_chrome.h"
 
 #include <dwmapi.h>
 #include <shellapi.h>
@@ -445,11 +446,7 @@ int FilesWindow::HitItem(float x, float y) const {
 }
 
 FilesWindow::Hit FilesWindow::HitTest(float x, float y) const {
-    // Traffic lights.
-    for (int i = 0; i < 3; ++i) {
-        const float cx = kTrafficLeft + kTrafficD / 2 + i * kTrafficPitch;
-        if (std::hypot(x - cx, y - kTrafficCenterY) <= kTrafficD / 2 + 3) return {i == 0 ? Zone::Close : i == 1 ? Zone::Minimize : Zone::Zoom, -1};
-    }
+    if (const int light = ui::chrome::TrafficHit(x, y); light >= 0) return {light == 0 ? Zone::Close : light == 1 ? Zone::Minimize : Zone::Zoom, -1};
     if (x < kSidebarW) {
         for (size_t i = 0; i < side_.size(); ++i)
             if (!side_[i].header && y >= side_[i].y && y < side_[i].y + kSidebarRow && x >= 8 && x < kSidebarW - 8) return {Zone::Sidebar, static_cast<int>(i)};
@@ -1211,30 +1208,9 @@ void FilesWindow::DrawSidebar(ID2D1DeviceContext* dc) {
     b->SetColor(c.line);
     dc->FillRectangle(D2D1::RectF(kSidebarW - 1, 0, kSidebarW, h), b.Get());
 
-    // Traffic lights (Velora's own colours; grey while the window is inactive).
-    const bool dark = theme_ == tokens::Theme::Dark;
-    const D2D1_COLOR_F lights[3] = {D2D1::ColorF(0.90f, 0.33f, 0.29f), D2D1::ColorF(0.91f, 0.70f, 0.24f), D2D1::ColorF(0.30f, 0.75f, 0.36f)};
-    const bool hoverGroup = hover_.zone == Zone::Close || hover_.zone == Zone::Minimize || hover_.zone == Zone::Zoom;
-    for (int i = 0; i < 3; ++i) {
-        const float cx = kTrafficLeft + kTrafficD / 2 + i * kTrafficPitch;
-        b->SetColor(active_ ? lights[i] : (dark ? D2D1::ColorF(1, 1, 1, 0.20f) : D2D1::ColorF(0, 0, 0, 0.16f)));
-        dc->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx, kTrafficCenterY), kTrafficD / 2, kTrafficD / 2), b.Get());
-        b->SetColor(D2D1::ColorF(0, 0, 0, 0.18f));
-        dc->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx, kTrafficCenterY), kTrafficD / 2 - 0.25f, kTrafficD / 2 - 0.25f), b.Get(), 0.5f);
-        if (hoverGroup && active_) {  // glyphs appear while the pointer is over the group
-            b->SetColor(D2D1::ColorF(0, 0, 0, 0.55f));
-            const float k = 3.0f;
-            if (i == 0) {
-                dc->DrawLine(D2D1::Point2F(cx - k, kTrafficCenterY - k), D2D1::Point2F(cx + k, kTrafficCenterY + k), b.Get(), 1.2f);
-                dc->DrawLine(D2D1::Point2F(cx - k, kTrafficCenterY + k), D2D1::Point2F(cx + k, kTrafficCenterY - k), b.Get(), 1.2f);
-            } else if (i == 1) {
-                dc->DrawLine(D2D1::Point2F(cx - k, kTrafficCenterY), D2D1::Point2F(cx + k, kTrafficCenterY), b.Get(), 1.2f);
-            } else {
-                dc->DrawLine(D2D1::Point2F(cx - k, kTrafficCenterY), D2D1::Point2F(cx + k, kTrafficCenterY), b.Get(), 1.2f);
-                dc->DrawLine(D2D1::Point2F(cx, kTrafficCenterY - k), D2D1::Point2F(cx, kTrafficCenterY + k), b.Get(), 1.2f);
-            }
-        }
-    }
+    // Traffic lights (shared chrome: Velora's own colours; grey while the window is inactive).
+    ui::chrome::DrawTrafficLights(dc, b.Get(), active_, theme_ == tokens::Theme::Dark,
+                                  hover_.zone == Zone::Close || hover_.zone == Zone::Minimize || hover_.zone == Zone::Zoom);
 
     dc->PushAxisAlignedClip(D2D1::RectF(0, kToolbarH, kSidebarW - 1, h), D2D1_ANTIALIAS_MODE_ALIASED);
     for (size_t i = 0; i < side_.size(); ++i) {
@@ -1487,43 +1463,20 @@ LRESULT FilesWindow::OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_NCCREATE: break;
         case WM_CREATE: OnCreate(); return 0;
         case WM_NCCALCSIZE:
-            if (wp) {  // the whole window is client area; a maximised window is pulled back inside the monitor
-                if (IsZoomed(hwnd_)) {
-                    auto* p = reinterpret_cast<NCCALCSIZE_PARAMS*>(lp);
-                    const UINT d = GetDpiForWindow(hwnd_);
-                    const int frame = GetSystemMetricsForDpi(SM_CXSIZEFRAME, d) + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, d);
-                    p->rgrc[0].left += frame;
-                    p->rgrc[0].right -= frame;
-                    p->rgrc[0].top += frame;
-                    p->rgrc[0].bottom -= frame;
-                }
-                return 0;
-            }
+            if (wp) return 0;  // the whole window is client area; a maximised window is sized to the work area by WM_GETMINMAXINFO
             break;
         case WM_NCHITTEST: {
             POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             RECT wr{};
             GetWindowRect(hwnd_, &wr);
-            const int b = static_cast<int>(kResizeBorder * s);
-            if (!IsZoomed(hwnd_)) {
-                const bool l = pt.x < wr.left + b, r = pt.x >= wr.right - b, t = pt.y < wr.top + b, bo = pt.y >= wr.bottom - b;
-                if (t && l) return HTTOPLEFT;
-                if (t && r) return HTTOPRIGHT;
-                if (bo && l) return HTBOTTOMLEFT;
-                if (bo && r) return HTBOTTOMRIGHT;
-                if (l) return HTLEFT;
-                if (r) return HTRIGHT;
-                if (t) return HTTOP;
-                if (bo) return HTBOTTOM;
-            }
+            if (!IsZoomed(hwnd_))
+                if (const LRESULT edge = ui::chrome::ResizeHitTest(wr, pt, static_cast<int>(kResizeBorder * s))) return edge;
             const Hit h = HitTest((pt.x - wr.left) / s, (pt.y - wr.top) / s);
             return h.zone == Zone::Caption ? HTCAPTION : HTCLIENT;
         }
-        case WM_GETMINMAXINFO: {
-            auto* mm = reinterpret_cast<MINMAXINFO*>(lp);
-            mm->ptMinTrackSize = POINT{static_cast<LONG>(560 * s), static_cast<LONG>(360 * s)};
+        case WM_GETMINMAXINFO:
+            ui::chrome::FillMinMaxInfo(hwnd_, reinterpret_cast<MINMAXINFO*>(lp), static_cast<int>(560 * s), static_cast<int>(360 * s));
             return 0;
-        }
         case WM_PAINT: {
             PAINTSTRUCT ps;
             BeginPaint(hwnd_, &ps);
