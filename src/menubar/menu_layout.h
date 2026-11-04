@@ -15,6 +15,9 @@ struct MenuItem {
     std::wstring label;
     bool separator = false;
     bool enabled = true;
+    bool checked = false;     // a tick in front of the label (app menus)
+    bool submenu = false;     // an arrow at the right edge; choosing the row opens what is behind it
+    std::wstring shortcut;    // right-aligned, dimmed ("Ctrl+N")
 };
 
 inline MenuItem Separator() { return MenuItem{0, {}, true, false}; }

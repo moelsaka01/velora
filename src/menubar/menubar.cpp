@@ -7,7 +7,12 @@
 #include <algorithm>
 #include <thread>
 
+#include <fstream>
+#include <sstream>
+
+#include "core/json.h"
 #include "core/log.h"
+#include "core/runtime.h"
 #include "core/version.h"
 #include "ui/backdrop.h"
 #include "ui/ui_common.h"
@@ -26,6 +31,8 @@ constexpr UINT_PTR kTimerWallpaper = 3;  // one shot after attach: Velora applie
 constexpr float kPad = 14.0f;
 namespace tm = velora::tokens::menu;
 
+constexpr UINT kMsgMenus = WM_APP + 70;        // the app-menu worker has answers
+constexpr unsigned kBackItem = 0xFFFF;          // popup id of the "back" row in a drilled-in submenu
 enum Cmd : UINT { kAbout = 1, kSettings, kApps, kSearch, kSleep, kRestart, kShutDown, kExit };
 
 bool EnableShutdownPrivilege() {
@@ -69,6 +76,20 @@ void OpenTaskbarSettings() {
         log::Error("menubar: overflow result=failed (ms-settings:taskbar did not open, code " + std::to_string(r) + ")");
 }
 
+// settings.json {"menus": {"probeChromium": true}}: allow probing Chromium / Electron windows (it switches their accessibility on).
+bool ProbeChromiumSetting() {
+    const auto dir = DataDir();
+    if (dir.empty()) return false;
+    std::ifstream f(dir / L"settings.json", std::ios::binary);
+    if (!f) return false;
+    std::stringstream ss;
+    ss << f.rdbuf();
+    auto root = json::Parse(ss.str());
+    const json::Value* menus = root && root->IsObject() ? root->Find("menus") : nullptr;
+    const json::Value* flag = menus && menus->IsObject() ? menus->Find("probeChromium") : nullptr;
+    return flag && flag->AsBool(false);
+}
+
 bool IsShellClass(HWND h) {
     wchar_t cls[64] = {};
     GetClassNameW(h, cls, static_cast<int>(std::size(cls)));
@@ -97,6 +118,12 @@ MenuBar::MenuBar(EventBus& bus, win::WindowTracker& tracker, Actions actions)
     : bus_(bus), tracker_(tracker), actions_(std::move(actions)), popup_(GetModuleHandleW(nullptr)) {
     for (EventType t : {EventType::WindowActivated, EventType::WindowTitleChanged, EventType::WindowDestroyed})
         tokens_.push_back(bus_.Subscribe(t, [this](const Event&) { OnWindowEvent(); }));
+    tokens_.push_back(bus_.Subscribe(EventType::WindowActivated, [this](const Event&) { RefreshAppMenus(); }));
+    tokens_.push_back(bus_.Subscribe(EventType::WindowDestroyed, [this](const Event& e) {
+        HWND gone = reinterpret_cast<HWND>(static_cast<UINT_PTR>(e.window.hwnd));
+        if (menus_) menus_->Forget(gone);
+        if (gone == menuTarget_) RefreshAppMenus();
+    }));
 }
 
 MenuBar::~MenuBar() {
@@ -125,12 +152,22 @@ void MenuBar::Attach(HWND hwnd) {
     ArmClock();
     Layout();
     SetTimer(hwnd_, kTimerWallpaper, 1500, nullptr);
+    menus_ = std::make_unique<AppMenuProvider>(hwnd_, kMsgMenus);
+    menus_->SetProbeChromium(ProbeChromiumSetting());
+    RefreshAppMenus();
     Draw();
 }
 
 void MenuBar::Detach() {
     if (!hwnd_) return;
     popup_.Close();
+    menus_.reset();
+    menuTarget_ = nullptr;
+    appBar_ = {};
+    stack_.clear();
+    titleHit_.clear();
+    titleCapsule_.clear();
+    hoverTitle_ = openTitle_ = -1;
     KillTimer(hwnd_, kTimerClock);
     KillTimer(hwnd_, kTimerRedraw);
     KillTimer(hwnd_, kTimerWallpaper);
@@ -253,6 +290,34 @@ void MenuBar::Layout() {
     place(L"clock", clockText_);
     place(L"overflow", L"\u22EF");
     for (const auto& s : status_) place(s.id, s.text);
+    LayoutTitles();
+}
+
+// The active app's menu titles after its name: text to text 21.75 pt apart, each with a 23 pt capsule when hovered or open.
+void MenuBar::LayoutTitles() {
+    titleHit_.clear();
+    titleCapsule_.clear();
+    if (appBar_.titles.empty() || appBar_.hwnd != menuTarget_ || !menuTarget_) return;
+    const float h = tokens::size::kMenuBarHeight, capTop = (h - tm::kCapsuleHeight) / 2;
+    float limit = static_cast<float>(host_.Width()) / ui::Scale(dpi_);
+    for (const auto& item : rightItems_) limit = std::min(limit, item.second.left);
+    limit -= tm::kTitleGap;
+    IDWriteTextFormat* fmt = ui::Format(tm::kFontSize);
+    float x = appRect_.right - 4 + tm::kTitleGap;  // the name's text ends 4 pt before its rect does
+    for (const AppMenuTitle& t : appBar_.titles) {
+        const float w = ui::MeasureWidth(t.label, fmt);
+        if (x + w > limit) break;
+        titleHit_.push_back(D2D1::RectF(x - tm::kTitleGap / 2, 0, x + w + tm::kTitleGap / 2, h));
+        titleCapsule_.push_back(D2D1::RectF(x - tm::kCapsulePadX, capTop, x + w + tm::kCapsulePadX, capTop + tm::kCapsuleHeight));
+        x += w + tm::kTitleGap;
+    }
+}
+
+int MenuBar::TitleAt(int px, int py) const {
+    const float s = ui::Scale(dpi_), x = px / s, y = py / s;
+    for (size_t i = 0; i < titleHit_.size(); ++i)
+        if (x >= titleHit_[i].left && x < titleHit_[i].right && y >= titleHit_[i].top && y < titleHit_[i].bottom) return static_cast<int>(i);
+    return -1;
 }
 
 void MenuBar::Draw() {
@@ -297,6 +362,16 @@ void MenuBar::Draw() {
 
     brush->SetColor(ui::Rgba(p.text));
     ui::DrawLabel(dc, brush.Get(), appName_, appRect_, ui::Format(tm::kFontSize, DWRITE_FONT_WEIGHT_SEMI_BOLD));
+    for (size_t i = 0; i < titleHit_.size() && i < appBar_.titles.size(); ++i) {
+        const bool open = static_cast<int>(i) == openTitle_ && menuOpen_, hot = static_cast<int>(i) == hoverTitle_;
+        if (open || hot) {
+            brush->SetColor(ui::Rgba(p.separator, open ? 1.6f : 1.0f));
+            dc->FillRoundedRectangle(D2D1::RoundedRect(titleCapsule_[i], tm::kCapsuleHeight / 2, tm::kCapsuleHeight / 2), brush.Get());
+        }
+        brush->SetColor(ui::Rgba(appBar_.titles[i].enabled ? p.text : p.textSecondary));
+        const float left = (titleCapsule_[i].left + titleCapsule_[i].right) / 2 - ui::MeasureWidth(appBar_.titles[i].label, ui::Format(tm::kFontSize)) / 2;
+        ui::DrawLabel(dc, brush.Get(), appBar_.titles[i].label, D2D1::RectF(left, 0, titleHit_[i].right, h), ui::Format(tm::kFontSize));
+    }
     for (const auto& [key, rect] : rightItems_) {
         std::wstring text = key.substr(key.find(L'\n') + 1);
         ui::DrawLabel(dc, brush.Get(), text, rect, ui::Format(tm::kFontSize), DWRITE_TEXT_ALIGNMENT_TRAILING);
@@ -428,21 +503,36 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
                 return true;
             }
             return false;
+        case kMsgMenus:
+            OnMenuAnswers();
+            result = 0;
+            return true;
         case WM_MOUSEMOVE: {
             bool over = inRect(logoRect_, GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
-            if (over != hoverLogo_) {
+            const int title = TitleAt(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
+            if (over != hoverLogo_ || title != hoverTitle_) {
                 hoverLogo_ = over;
+                hoverTitle_ = title;
                 TRACKMOUSEEVENT t{sizeof t, TME_LEAVE, h, 0};
                 TrackMouseEvent(&t);
                 Invalidate();
+                // With a menu open, moving to the next title opens that one (as menu bars do).
+                if (title >= 0 && menuOpen_ && popup_.IsOpen() && title != openTitle_) OpenAppMenu(title);
             }
             return false;
         }
         case WM_MOUSELEAVE:
             hoverLogo_ = false;
+            hoverTitle_ = -1;
             Invalidate();
             return false;
         case WM_LBUTTONDOWN:
+            if (const int title = TitleAt(GET_X_LPARAM(lp), GET_Y_LPARAM(lp)); title >= 0) {
+                if (popup_.IsOpen() && openTitle_ == title) popup_.Close();
+                else if (GetTickCount64() - popupClosedAt_ > 250 || openTitle_ != title) OpenAppMenu(title);
+                result = 0;
+                return true;
+            }
             if (inRect(logoRect_, GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) {
                 // A click on the logo while the menu is open closes it; so does the click that deactivated the popup a moment ago.
                 if (popup_.IsOpen()) popup_.Close();
@@ -461,6 +551,183 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
         default:
             return false;
     }
+}
+
+// ======================= global app menus =======================
+HWND MenuBar::AppMenuTarget() const {
+    if (targetOverride_) return targetOverride_;
+    HWND fg = GetForegroundWindow();
+    if (!fg) return nullptr;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(fg, &pid);
+    if (pid == GetCurrentProcessId()) return menuTarget_;  // our own popup: keep the app it belongs to
+    if (IsShellClass(fg)) return nullptr;
+    HWND root = GetAncestor(fg, GA_ROOT);
+    if (!root) return nullptr;
+    if (const win::TrackedWindow* w = tracker_.Find(root); w && !w->controllable) return nullptr;  // elevated: its menus cannot be driven from here
+    return root;
+}
+
+void MenuBar::RefreshAppMenus() {
+    if (!menus_) return;
+    HWND target = AppMenuTarget();
+    if (target != menuTarget_) {
+        if (popup_.IsOpen() && openTitle_ >= 0) popup_.Close();
+        menuTarget_ = target;
+        appBar_ = {};
+        stack_.clear();
+        openTitle_ = hoverTitle_ = -1;
+        LayoutTitles();
+        Invalidate();
+    }
+    if (target) probeId_ = menus_->Probe(target);  // cheap for classic menus; cached for UI Automation
+}
+
+void MenuBar::OnMenuAnswers() {
+    MenuAnswer a;
+    while (menus_ && menus_->Take(&a)) {
+        if (a.kind == MenuAnswer::Kind::Bar) {
+            if (a.id != probeId_ || a.hwnd != menuTarget_) continue;  // a stale answer
+            const bool same = appBar_.hwnd == a.hwnd && a.ok == (appBar_.tier != MenuTier::None) && (!a.ok || TitlesToString(appBar_) == TitlesToString(a.bar));
+            if (same) continue;
+            appBar_ = a.ok ? std::move(a.bar) : AppMenuBar{};
+            appBar_.hwnd = a.hwnd;
+            log::Info(std::string("app menus: ") + (appBar_.tier == MenuTier::Win32 ? "tier 1 (HMENU)" : appBar_.tier == MenuTier::Uia ? "tier 2 (UI Automation)" : "none") +
+                      ", " + std::to_string(appBar_.titles.size()) + " titles");
+            LayoutTitles();
+            Invalidate();
+        } else {
+            if (a.id != expandId_ || a.hwnd != menuTarget_ || openTitle_ < 0 || openTitle_ >= static_cast<int>(appBar_.titles.size())) continue;
+            if (!a.ok || a.items.empty()) {
+                log::Info("app menus: nothing to show for this menu");
+                menuOpen_ = false;
+                Invalidate();
+                continue;
+            }
+            Level level;
+            level.label = stack_.empty() ? appBar_.titles[openTitle_].label : pendingLabel_;
+            level.items = std::move(a.items);
+            level.uiaIndex = pendingPath_.empty() ? -1 : pendingPath_.back();
+            stack_.push_back(std::move(level));
+            ShowLevel();
+        }
+    }
+}
+
+void MenuBar::OpenAppMenu(int title) {
+    if (!menus_ || title < 0 || title >= static_cast<int>(appBar_.titles.size()) || !menuTarget_) return;
+    const AppMenuTitle& t = appBar_.titles[title];
+    if (!t.enabled) return;
+    if (popup_.IsOpen()) popup_.Close();  // another title's (or the Velora) menu
+    if (t.direct) {  // a command in the bar itself
+        SetForegroundWindow(menuTarget_);
+        menus_->InvokeTitle(menuTarget_, appBar_.tier, t.id, t.index);
+        return;
+    }
+    openTitle_ = title;
+    menuOpen_ = true;
+    stack_.clear();
+    pendingPath_.clear();
+    expandId_ = menus_->Expand(menuTarget_, appBar_.tier, t.index, {});  // the popup opens when the worker answers
+    Invalidate();
+}
+
+void MenuBar::ShowLevel() {
+    if (stack_.empty() || openTitle_ < 0 || openTitle_ >= static_cast<int>(titleCapsule_.size())) return;
+    std::vector<MenuItem> items;
+    if (stack_.size() > 1) {  // a drilled-in submenu starts with a way back
+        MenuItem back;
+        back.id = kBackItem;
+        back.label = L"\u2039  " + stack_.back().label;
+        items.push_back(back);
+        items.push_back(Separator());
+    }
+    const auto& list = stack_.back().items;
+    for (size_t i = 0; i < list.size(); ++i) {
+        const AppMenuItem& it = list[i];
+        if (it.separator) {
+            items.push_back(Separator());
+            continue;
+        }
+        MenuItem m;
+        m.id = static_cast<unsigned>(i + 1);
+        m.label = it.label;
+        m.enabled = it.enabled;
+        m.checked = it.checked;
+        m.submenu = it.submenu;
+        m.shortcut = it.shortcut;
+        items.push_back(std::move(m));
+    }
+    RECT r{};
+    GetWindowRect(hwnd_, &r);
+    const float s = ui::Scale(dpi_);
+    const float top = (tokens::size::kMenuBarHeight + tm::kCapsuleHeight) / 2 + tm::kPopupGap;
+    const int title = openTitle_;
+    menuOpen_ = true;
+    reopening_ = true;  // closing the previous level must not clear the open title
+    if (popup_.IsOpen()) popup_.Close();
+    reopening_ = false;
+    popup_.SetOnHorizontal([this, title](int dir) {
+        const int n = static_cast<int>(appBar_.titles.size());
+        for (int step = 1; step <= n; ++step) {
+            const int next = ((title + dir * step) % n + n) % n;
+            if (next < static_cast<int>(titleHit_.size()) && appBar_.titles[next].enabled) {
+                OpenAppMenu(next);
+                return;
+            }
+        }
+    });
+    const bool opened = popup_.Open(
+        hwnd_, r.left + static_cast<int>(titleCapsule_[title].left * s), r.top + static_cast<int>(top * s), std::move(items),
+        [this](unsigned id) { RunAppItem(id); },
+        [this] {
+            if (reopening_) return;
+            menuOpen_ = false;
+            popupClosedAt_ = GetTickCount64();
+            Invalidate();
+        });
+    if (!opened) {
+        menuOpen_ = false;
+        Invalidate();
+    }
+}
+
+void MenuBar::RunAppItem(unsigned id) {
+    if (stack_.empty() || !menus_) return;
+    if (id == kBackItem) {
+        stack_.pop_back();
+        ShowLevel();
+        return;
+    }
+    if (id == 0 || id > stack_.back().items.size()) return;
+    const AppMenuItem item = stack_.back().items[id - 1];
+    const AppMenuTitle& title = appBar_.titles[openTitle_];
+    std::vector<int> path;  // UIA: the submenu items opened on the way down
+    for (size_t i = 1; i < stack_.size(); ++i) path.push_back(stack_[i].uiaIndex);
+    if (item.submenu) {
+        if (appBar_.tier == MenuTier::Win32) {
+            Level level;
+            level.label = item.label;
+            level.items = item.children;
+            stack_.push_back(std::move(level));
+            ShowLevel();
+        } else {
+            path.push_back(item.uiaIndex);
+            pendingPath_ = path;
+            pendingLabel_ = item.label;
+            menuOpen_ = true;
+            expandId_ = menus_->Expand(menuTarget_, appBar_.tier, title.index, path);
+        }
+        return;
+    }
+    // A command: bring the app forward first (the popup had the focus), then run it.
+    SetForegroundWindow(menuTarget_);
+    path.push_back(item.uiaIndex);
+    menus_->Invoke(menuTarget_, appBar_.tier, title.index, std::move(path), item.id, item.label);
+    stack_.clear();
+    menuOpen_ = false;
+    popupClosedAt_ = 0;  // the popup closed because a command was chosen, not by a click on the bar: the next click on a title opens at once
+    Invalidate();
 }
 
 }  // namespace velora::menubar

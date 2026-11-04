@@ -29,6 +29,9 @@ public:
               std::function<void()> onClosed);
     void Close();
     bool IsOpen() const { return hwnd_ != nullptr; }
+    // Left / Right with the popup open (not Right on a row with a submenu, that opens it): the popup closes and `fn(-1 or +1)` runs, so the
+    // menu bar can move to the neighbouring title.
+    void SetOnHorizontal(std::function<void(int)> fn) { onHorizontal_ = std::move(fn); }
 
 private:
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -48,6 +51,8 @@ private:
     int pressed_ = -1;
     std::function<void(unsigned)> onChoose_;
     std::function<void()> onClosed_;
+    std::function<void(int)> onHorizontal_;
+    bool anyChecked_ = false;
 };
 
 }  // namespace velora::menubar
