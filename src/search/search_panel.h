@@ -43,6 +43,8 @@ public:
     bool Visible() const { return hwnd_ != nullptr; }
     HWND Hwnd() const { return hwnd_; }
     void SetQuery(const std::wstring& text);  // as if typed (IPC / tests)
+    // The key combination that opens the panel, shown dimmed at the right of the empty pill ("" = none registered).
+    void SetHotkeyHint(std::wstring hint) { hotkeyHint_ = std::move(hint); }
     void OnDataChanged();                      // the app index or icons changed
     void SetAnimationsEnabled(bool on) { anim_.SetEnabled(on); }
     void SetOnHidden(std::function<void()> fn) { onHidden_ = std::move(fn); }
@@ -64,6 +66,7 @@ public:
     Snapshot GetSnapshot() const;
 
 private:
+    std::wstring hotkeyHint_;
     static LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT OnMessage(UINT, WPARAM, LPARAM);
     void Refresh();           // rebuild the results from the apps and the last file answer

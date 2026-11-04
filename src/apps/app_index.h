@@ -8,6 +8,8 @@
 
 #include <functional>
 #include <mutex>
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,6 +31,9 @@ struct AppEntry {
 int MatchScore(const std::wstring& query, const std::wstring& name);
 // Shortcuts that are not apps (uninstallers, readmes, help).
 bool IsNoiseShortcut(const std::wstring& name);
+// A Start-menu Internet Shortcut (.url) that starts an app through a protocol (steam://rungameid/..., com.epicgames.launcher://...).
+// Web links (http, https, ftp, file, mailto) are not apps. The icon is the shortcut's IconFile when it exists, else the shortcut itself.
+std::optional<AppEntry> ParseUrlShortcut(const std::filesystem::path& file);
 // The program a shortcut really starts: the App-V launcher of Click-to-Run Office (AppVLP.exe) is only a trampoline
 // whose first quoted argument is the tool; everything else is returned as is.
 std::wstring RealProgram(const std::wstring& exe, const std::wstring& args);
