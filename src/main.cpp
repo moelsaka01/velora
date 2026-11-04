@@ -9,6 +9,7 @@
 #include <tlhelp32.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -445,9 +446,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     menubar::MenuBar::Actions menuActions;
     menuActions.exitVelora = [] { PostMessageW(g_window, WM_CLOSE, 0, 0); };
     menuActions.openSettings = [] {
-        // velora-settings.exe is a stub until Settings reaches G1 (docs/PROGRESS.md): open Windows Settings meanwhile.
-        // Switch back to ExeDir() / L"velora-settings.exe" when the app ships.
-        ShellExecuteW(nullptr, L"open", L"ms-settings:", nullptr, nullptr, SW_SHOWNORMAL);
+        // Velora Settings (on demand, single instance). Windows' own Settings only when the app is missing (a broken install).
+        const auto exe = ExeDir() / L"velora-settings.exe";
+        std::error_code ec;
+        if (std::filesystem::exists(exe, ec)) ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        else ShellExecuteW(nullptr, L"open", L"ms-settings:", nullptr, nullptr, SW_SHOWNORMAL);
     };
     apps::AppsGrid grid(instance);
     g_grid = &grid;
@@ -469,9 +472,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     grid.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
     searchPanel.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
     // The global hotkey belongs to the real session only: the automated gate must not grab keys on the developer's machine.
-    if (!CurrentProfile().IsTest()) {
+    auto registerSearchHotkey = [&] {
+        search::UnregisterSearchHotkey(g_window, kHotkeySearch);
         const search::HotkeyChoice hk = search::RegisterSearchHotkey(g_window, kHotkeySearch, search::ConfiguredHotkey());
         searchPanel.SetHotkeyHint(hk.registered ? search::FormatHotkey(hk.key) : std::wstring{});
+    };
+    if (!CurrentProfile().IsTest()) {
+        registerSearchHotkey();
+        // Settings changed the hotkey: apply it now.
+        bus.Subscribe(EventType::SettingsChanged, [&](const Event&) { registerSearchHotkey(); });
     }
     overview::Overview overviewPanel(instance, tracker);
     g_overview = &overviewPanel;

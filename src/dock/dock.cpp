@@ -98,6 +98,16 @@ std::vector<DockApp> DefaultPinned() {
     return list;
 }
 
+// settings.json -> {"dock": {"magnification": false}}; on by default.
+bool MagnificationSetting() {
+    auto path = SettingsPath();
+    if (path.empty()) return true;
+    auto doc = json::Parse(ReadFile(path));
+    const json::Value* dock = doc && doc->IsObject() ? doc->Find("dock") : nullptr;
+    const json::Value* m = dock && dock->IsObject() ? dock->Find("magnification") : nullptr;
+    return m ? m->AsBool(true) : true;
+}
+
 std::vector<DockApp> LoadPinned() {
     auto path = SettingsPath();
     std::vector<DockApp> list;
@@ -113,7 +123,11 @@ bool SavePinned(const std::vector<DockApp>& pinned) {
     if (auto old = json::Parse(ReadFile(path)); old && old->IsObject()) root = *old;
     auto dock = json::Parse(PinnedToJson(pinned));
     if (!dock) return false;
-    root.Set("dock", *dock);
+    json::Value merged;  // keep the other keys of the dock section (dock.magnification is written by Settings)
+    if (const json::Value* old = root.Find("dock"); old && old->IsObject()) merged = *old;
+    if (dock->IsObject())
+        for (const auto& [k, v] : dock->AsObject()) merged.Set(k, v);
+    root.Set("dock", merged.IsNull() ? *dock : merged);
     auto tmp = path;
     tmp += L".tmp";
     {
@@ -133,6 +147,14 @@ bool SavePinned(const std::vector<DockApp>& pinned) {
 Dock::Dock(EventBus& bus, win::WindowTracker& tracker, Actions actions)
     : bus_(bus), tracker_(tracker), actions_(std::move(actions)) {
     pinned_ = LoadPinned();
+    magnify_ = MagnificationSetting();
+    tokens_.push_back(bus_.Subscribe(EventType::SettingsChanged, [this](const Event&) {
+        const bool now = MagnificationSetting();
+        if (now == magnify_) return;
+        magnify_ = now;
+        if (!magnify_) UpdateMagnification(false, 0);
+        ScheduleRebuild();
+    }));
     for (EventType t : {EventType::WindowCreated, EventType::WindowDestroyed, EventType::WindowActivated, EventType::WindowMinimized,
                         EventType::WindowRestored, EventType::WindowTitleChanged, EventType::WindowCloaked, EventType::WindowUncloaked})
         tokens_.push_back(bus_.Subscribe(t, [this](const Event&) { ScheduleRebuild(); }));
@@ -356,7 +378,7 @@ void Dock::Rebuild() {
     const float winW = WindowWidthDip(), winH = WindowHeightDip();
     baseGeo_ = ComputeGeometry(items_.size(), pinnedCount_);
     // Window margins: room for the widest the shelf gets while magnified, and for icons that overshoot the peak.
-    const float peak = anim_.Enabled() ? tokens::dock::kMagnifyPeak : 1.0f;
+    const float peak = anim_.Enabled() && magnify_ ? tokens::dock::kMagnifyPeak : 1.0f;
     sideMargin_ = std::ceil(MaxGrowth(items_.size(), pinnedCount_, peak) / 2) + tokens::dock::kShadowPad;
     headroom_ = std::max(tokens::dock::kShadowPad, kIcon * peak * 1.08f - IconBaseline() + 4.0f);
     if (scale_.size() != items_.size()) {  // the item set changed: start from rest
@@ -444,7 +466,7 @@ void Dock::SetScaleTargets(const std::vector<float>& targets) {
 }
 
 void Dock::UpdateMagnification(bool active, float pointerX) {
-    hoverActive_ = active && anim_.Enabled();
+    hoverActive_ = active && anim_.Enabled() && magnify_;
     std::vector<float> targets(items_.size(), 1.0f);
     if (hoverActive_)
         targets = MagnifyScales(items_.size(), pinnedCount_, pointerX - WindowWidthDip() / 2, tokens::dock::kMagnifyPeak);
