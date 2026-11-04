@@ -66,7 +66,15 @@ add_test(NAME core_test COMMAND core_test)
 # switch/: enter/exit, appbar, taskbar helpers, restore (shared by shell and watchdog).
 add_library(velora_switch STATIC
   src/switch/taskbar.cpp src/switch/restore.cpp src/switch/appbar.cpp src/switch/switch_manager.cpp)
-target_link_libraries(velora_switch PUBLIC velora_core velora_tokens shcore velora_wallpaper)
+target_link_libraries(velora_switch PUBLIC velora_core velora_tokens shcore velora_wallpaper velora_theming)
+
+# theming/: window theming through documented DWM attributes (no injection), restored on exit and by recovery. Owner: B.
+# Defined before velora_switch because recovery (switch/restore.cpp) restores themed windows from the backup file.
+add_library(velora_theming STATIC src/theming/theme_policy.cpp src/theming/window_theme.cpp)
+target_link_libraries(velora_theming PUBLIC velora_core dwmapi)
+add_executable(theming_test tests/theming_test.cpp)
+target_link_libraries(theming_test PRIVATE velora_theming)
+add_test(NAME theming_test COMMAND theming_test)
 
 # wallpaper/: procedural Velora wallpaper per monitor, restore on exit / recovery. Owner B. Defined before
 # velora_switch because recovery (switch/restore.cpp) restores the original wallpaper.
@@ -87,7 +95,7 @@ velora_add_app(velora-shell    src/main.cpp)
 velora_add_app(velora-watchdog watchdog/main.cpp)
 velora_add_app(velora-files    apps/files/main.cpp)
 velora_add_app(velora-settings apps/settings/main.cpp)
-target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper)
+target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper velora_theming)
 target_link_libraries(velora-watchdog PRIVATE velora_switch)
 target_sources(velora-shell PRIVATE src/shell.rc)  # the Velora app icon (Dock)
 
