@@ -168,6 +168,13 @@ target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version 
 add_executable(chrome_test tests/chrome_test.cpp)
 target_link_libraries(chrome_test PRIVATE velora_ui)
 add_test(NAME chrome_test COMMAND chrome_test)
+# control/: system controls behind Control Center (documented APIs only). Owner: C.
+add_library(velora_control_core STATIC src/control/audio.cpp src/control/wifi.cpp src/control/radios.cpp src/control/brightness.cpp
+            src/control/personalize.cpp)
+target_link_libraries(velora_control_core PUBLIC velora_core ole32 oleaut32 uuid wlanapi dxva2 wbemuuid windowsapp)
+add_executable(control_test tests/control_test.cpp)
+target_link_libraries(control_test PRIVATE velora_control_core)
+add_test(NAME control_test COMMAND control_test)
 # The Dock's pure geometry and blur maths (no windows.h), shared with the wallpaper backdrop.
 add_library(velora_dock_layout STATIC src/dock/dock_layout.cpp)
 target_link_libraries(velora_dock_layout PUBLIC velora_tokens)
