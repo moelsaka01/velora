@@ -12,10 +12,12 @@
 
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "core/event_bus.h"
+#include "menubar/app_menu_provider.h"
 #include "menubar/menu_popup.h"
 #include "render/render_host.h"
 #include "switch/appbar.h"
@@ -58,6 +60,21 @@ public:
     bool Attached() const { return hwnd_ != nullptr; }
     void Trim() { host_.Trim(); }
 
+    // Tests: treat `hwnd` as the active app (the real bar follows the foreground window), and look at what the bar shows.
+    void SetMenuTargetOverride(HWND hwnd) {
+        targetOverride_ = hwnd;
+        RefreshAppMenus();
+    }
+    std::wstring AppMenuSummary() const { return TitlesToString(appBar_); }   // the titles shown after the app name
+    MenuTier AppMenuTier() const { return appBar_.tier; }
+    bool TitleRectDip(int index, D2D1_RECT_F* out) const {
+        if (index < 0 || index >= static_cast<int>(titleHit_.size())) return false;
+        *out = titleHit_[index];
+        return true;
+    }
+    bool AppMenuPopupOpen() const { return popup_.IsOpen() && openTitle_ >= 0; }
+    int OpenTitleIndex() const { return popup_.IsOpen() ? openTitle_ : -1; }
+
 private:
     bool OnMessage(HWND, UINT, WPARAM, LPARAM, LRESULT&);
     void Layout();
@@ -70,6 +87,33 @@ private:
     void RunCommand(unsigned cmd);
     std::wstring ActiveAppName();
     void OnWindowEvent();
+
+    // ---- global app menus (CLAUDE.md sec. 5 menubar G2, tiers 1-2) ----
+    HWND AppMenuTarget() const;       // the window whose menus the bar shows (null: none / not controllable)
+    void RefreshAppMenus();           // foreground changed: forget the old titles, ask for the new ones
+    void OnMenuAnswers();             // the provider's worker has something
+    void LayoutTitles();
+    int TitleAt(int px, int py) const;
+    void OpenAppMenu(int title);
+    void ShowLevel();                 // (re)opens the popup for the top level of stack_
+    void RunAppItem(unsigned id);
+    struct Level {
+        std::wstring label;
+        std::vector<AppMenuItem> items;
+        int uiaIndex = -1;            // the index of the submenu item that opened this level (UIA path)
+    };
+    std::unique_ptr<AppMenuProvider> menus_;
+    HWND menuTarget_ = nullptr;
+    AppMenuBar appBar_;
+    unsigned probeId_ = 0, expandId_ = 0;
+    std::vector<D2D1_RECT_F> titleHit_, titleCapsule_;
+    int hoverTitle_ = -1, openTitle_ = -1;
+    std::vector<Level> stack_;        // title level first, drilled-in submenus after it
+    std::vector<int> pendingPath_;    // UIA path of the submenu being fetched
+    std::wstring pendingLabel_;
+    bool reopening_ = false;
+    int popupTitle_ = -1;  // the title whose popup is open (Update() is only valid for the same title)
+    HWND targetOverride_ = nullptr;
 
     EventBus& bus_;
     win::WindowTracker& tracker_;
