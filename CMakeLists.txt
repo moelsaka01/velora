@@ -23,7 +23,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
-  add_compile_options(/W4 /permissive-)
+  add_compile_options(/W4 /permissive- /guard:cf)  # control-flow guard
+  add_link_options(/guard:cf /CETCOMPAT /DYNAMICBASE /HIGHENTROPYVA /NXCOMPAT)  # CFG, CET shadow stack, ASLR (64-bit), DEP
 endif()
 
 enable_testing()
@@ -195,6 +196,9 @@ add_test(NAME overview_test COMMAND overview_test)
 add_executable(monitor_layout_test tests/monitor_layout_test.cpp)
 target_include_directories(monitor_layout_test PRIVATE src)
 add_test(NAME monitor_layout_test COMMAND monitor_layout_test)
+add_executable(security_test tests/security_test.cpp)
+target_link_libraries(security_test PRIVATE velora_apps velora_theming shell32)
+add_test(NAME security_test COMMAND security_test)
 add_executable(gaming_test tests/gaming_test.cpp)
 target_include_directories(gaming_test PRIVATE src)
 add_test(NAME gaming_test COMMAND gaming_test)
