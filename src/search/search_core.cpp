@@ -56,6 +56,10 @@ bool ParseHotkey(const std::wstring& text, Hotkey* out) {
     if (key == L"space") h.vk = 0x20;
     else if (key == L"enter" || key == L"return") h.vk = 0x0D;
     else if (key == L"tab") h.vk = 0x09;
+    else if (key == L"up") h.vk = 0x26;
+    else if (key == L"down") h.vk = 0x28;
+    else if (key == L"left") h.vk = 0x25;
+    else if (key == L"right") h.vk = 0x27;
     else if (key.size() == 1 && ((key[0] >= L'a' && key[0] <= L'z') || (key[0] >= L'0' && key[0] <= L'9')))
         h.vk = static_cast<unsigned>(std::towupper(key[0]));
     else if (key.size() >= 2 && key[0] == L'f' && std::iswdigit(key[1])) {
@@ -77,6 +81,10 @@ std::wstring FormatHotkey(const Hotkey& h) {
     if (h.vk == 0x20) s += L"Space";
     else if (h.vk == 0x0D) s += L"Enter";
     else if (h.vk == 0x09) s += L"Tab";
+    else if (h.vk == 0x26) s += L"Up";
+    else if (h.vk == 0x28) s += L"Down";
+    else if (h.vk == 0x25) s += L"Left";
+    else if (h.vk == 0x27) s += L"Right";
     else if (h.vk >= 0x70 && h.vk <= 0x7B) s += L"F" + std::to_wstring(h.vk - 0x70 + 1);
     else s += static_cast<wchar_t>(h.vk);
     return s;
