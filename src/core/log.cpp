@@ -33,6 +33,13 @@ void Init(std::string_view processName) {
     g_path = dir / (std::string(processName) + ".log");
 }
 
+std::string Sanitize(std::string_view message) {
+    std::string out(message);
+    for (char& c : out)
+        if (static_cast<unsigned char>(c) < 0x20 || c == 0x7f) c = ' ';
+    return out;
+}
+
 void Write(Level level, std::string_view message) {
     std::lock_guard lock(g_mutex);
     if (g_path.empty()) return;
@@ -52,7 +59,7 @@ void Write(Level level, std::string_view message) {
     std::snprintf(head, sizeof head, "%04u-%02u-%02u %02u:%02u:%02u.%03u [%lu] %s ", st.wYear, st.wMonth, st.wDay,
                   st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, GetCurrentProcessId(), tag);
     std::string line = head;
-    line.append(message);
+    line.append(Sanitize(message));
     line += '\n';
 
     HANDLE f = CreateFileW(g_path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,

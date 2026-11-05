@@ -1537,7 +1537,7 @@ LRESULT FilesWindow::OnMessage(UINT msg, WPARAM wp, LPARAM lp) {
         case kMsgIcons: Invalidate(); return 0;
         case WM_COPYDATA: {
             auto* cd = reinterpret_cast<COPYDATASTRUCT*>(lp);
-            if (cd && cd->dwData == kCopyDataOpen && cd->lpData) {
+            if (cd && cd->dwData == kCopyDataOpen && cd->lpData && cd->cbData <= 64 * 1024) {  // a folder name, never megabytes
                 std::wstring text(static_cast<const wchar_t*>(cd->lpData), cd->cbData / sizeof(wchar_t));
                 while (!text.empty() && text.back() == L'\0') text.pop_back();
                 const size_t nl = text.find(L'\n');

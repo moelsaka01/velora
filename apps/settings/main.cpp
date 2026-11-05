@@ -33,6 +33,8 @@ int PageIndex(const std::wstring& wanted) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCmd) {
+    SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);  // later DLL loads never come from the current directory
+
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     log::Init("velora-settings");
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);

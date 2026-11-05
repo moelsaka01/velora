@@ -238,3 +238,6 @@ Direction recorded first: v1.0 = **Level 1**, a blend of Windows and macOS (no i
 - Run with the owner (McAfee off): everything in docs/VALIDATION.md "Guided session" paragraph; bench medians in RELEASE_REPORT.md (private 79.8 MB, enter 143 ms, exit 437 ms, idle CPU 0 %).
 - Bugs found live and fixed in #81: Settings window top under the menu bar (now centred in the work area); velora-files/-settings were themed (now never); notification toasts (ShellExperienceHost) appeared in the Dock with a blank tile (now ignored); the Dock showed Velora Files and File Explorer with the same blue folder (Velora Files now has its own icon, assets/icons/velora-files.svg).
 - Resume: merge #81, tag v1.0.0 only after the owner has turned McAfee back on and decided about the open items in RELEASE_REPORT.md (second monitor, real game, installers on a real desktop). SignPath application and the antivirus forms are still the owner's.
+
+### Security review (2026-11-05)
+- docs/SECURITY_REVIEW.md: surfaces checked, 7 findings fixed, residual risks listed (unsigned binaries, same-user trust, no independent audit). security_test (3 046 checks) is new. Build flags verified in the PE headers (ASLR, high-entropy ASLR, DEP, CFG).
