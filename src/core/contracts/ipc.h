@@ -50,6 +50,8 @@ inline constexpr char kOpenApps[]     = "open_apps";   // CLI/tests -> shell: sh
 inline constexpr char kCloseApps[]    = "close_apps";  // CLI/tests -> shell: hide the Apps panel
 inline constexpr char kOpenSearch[]   = "open_search"; // CLI/tests -> shell: show the Search panel (payload query)
 inline constexpr char kCloseSearch[]  = "close_search"; // CLI/tests -> shell: hide the Search panel
+inline constexpr char kOpenOverview[] = "open_overview";   // CLI/tests -> shell: show the Overview
+inline constexpr char kCloseOverview[] = "close_overview"; // CLI/tests -> shell: hide the Overview
 inline constexpr char kOpenFiles[]    = "open_files";  // CLI/tests/Search -> shell: start velora-files (payload path, select)
 }  // namespace msg
 

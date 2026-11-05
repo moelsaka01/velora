@@ -54,7 +54,7 @@ add_test(NAME tokens_test COMMAND tokens_test)
 # core/: JSON, state store, IPC pipes, logging, runtime paths (Windows-only static lib).
 add_library(velora_core STATIC
   src/core/json.cpp src/core/text.cpp src/core/runtime.cpp src/core/log.cpp
-  src/core/state_store.cpp src/core/ipc_pipe.cpp)
+  src/core/state_store.cpp src/core/ipc_pipe.cpp src/core/settings_file.cpp)
 target_include_directories(velora_core PUBLIC src)
 target_compile_definitions(velora_core PUBLIC UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(velora_core PUBLIC velora_contracts advapi32 shell32 ole32 user32)
@@ -95,7 +95,7 @@ velora_add_app(velora-shell    src/main.cpp)
 velora_add_app(velora-watchdog watchdog/main.cpp)
 velora_add_app(velora-files    apps/files/main.cpp)
 velora_add_app(velora-settings apps/settings/main.cpp)
-target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper velora_theming)
+target_link_libraries(velora-shell    PRIVATE velora_switch velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper velora_theming velora_overview)
 target_link_libraries(velora-watchdog PRIVATE velora_switch)
 target_sources(velora-shell PRIVATE src/shell.rc)  # the Velora app icon (Dock)
 
@@ -110,7 +110,7 @@ foreach(t velora-shell-testing velora-watchdog-testing)
   target_compile_definitions(${t} PRIVATE VELORA_TESTING)
 endforeach()
 target_sources(velora-shell-testing PRIVATE src/shell.rc)
-target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper)
+target_link_libraries(velora-shell-testing PRIVATE velora_menubar velora_windows velora_ui velora_apps velora_dock velora_wallpaper velora_overview)
 set_target_properties(velora-shell-testing PROPERTIES OUTPUT_NAME velora-shell RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 set_target_properties(velora-watchdog-testing PROPERTIES OUTPUT_NAME velora-watchdog RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/testbin")
 
@@ -168,6 +168,15 @@ target_link_libraries(velora_ui PUBLIC velora_render velora_core dwrite version 
 add_executable(chrome_test tests/chrome_test.cpp)
 target_link_libraries(chrome_test PRIVATE velora_ui)
 add_test(NAME chrome_test COMMAND chrome_test)
+# overview/: Mission Control-style overview (DWM thumbnails). Layout and hot corner are pure (overview_test).
+add_library(velora_overview STATIC src/overview/overview.cpp)
+target_link_libraries(velora_overview PUBLIC velora_ui velora_render velora_windows velora_backdrop dwmapi)
+add_executable(overview_window_test tests/overview_window_test.cpp)
+target_link_libraries(overview_window_test PRIVATE velora_overview)
+add_test(NAME overview_window_test COMMAND overview_window_test)
+add_executable(overview_test tests/overview_test.cpp)
+target_include_directories(overview_test PRIVATE src)
+add_test(NAME overview_test COMMAND overview_test)
 # The Dock's pure geometry and blur maths (no windows.h), shared with the wallpaper backdrop.
 add_library(velora_dock_layout STATIC src/dock/dock_layout.cpp)
 target_link_libraries(velora_dock_layout PUBLIC velora_tokens)
