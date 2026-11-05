@@ -1,0 +1,165 @@
+name: release
+
+# Builds, tests and packages Velora: setup .exe (Inno Setup), per-user .msi (WiX), portable zip, SHA-256 checksums.
+# On a v* tag it also creates a DRAFT GitHub Release with those files; a person reviews RELEASE_REPORT.md and publishes it.
+# Signing: when the repository variable SIGNPATH_ORGANIZATION_ID is set (after the SignPath Foundation application is approved,
+# see docs/SIGNING.md) the binaries and the installers are signed through SignPath; without it the files are unsigned and the
+# release notes say so.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  pull_request:  # packaging changes are built and smoke-tested before they merge (nothing is released from a pull request)
+    paths:
+      - "installer/**"
+      - "tools/package.ps1"
+      - ".github/workflows/release.yml"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      SIGNING: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        shell: pwsh
+        run: |
+          $v = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).version
+          "VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne "v$v") { throw "tag ${{ github.ref_name }} does not match vcpkg.json version $v" }
+
+      - name: Configure
+        run: cmake -S . -B build -A x64
+      - name: Build
+        run: cmake --build build --config Release
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Stage binaries and portable zip
+        shell: pwsh
+        run: pwsh tools/package.ps1 -BuildDir build/Release -Version $env:VERSION
+
+      - name: Upload unsigned binaries (input for signing)
+        if: ${{ env.SIGNING == 'true' }}
+        id: upload-binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: velora-binaries-unsigned
+          path: dist/stage/*.exe
+      - name: Sign binaries (SignPath)
+        if: ${{ env.SIGNING == 'true' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: velora
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: binaries
+          github-artifact-id: ${{ steps.upload-binaries.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist/signed-binaries
+      - name: Use the signed binaries
+        if: ${{ env.SIGNING == 'true' }}
+        shell: pwsh
+        run: |
+          Copy-Item dist/signed-binaries/*.exe dist/stage -Force
+          Remove-Item dist/Velora-$env:VERSION-portable.zip
+          Compress-Archive -Path dist/stage/* -DestinationPath dist/Velora-$env:VERSION-portable.zip
+
+      - name: Install Inno Setup and WiX
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          dotnet tool install --global wix --version 5.0.2
+          wix extension list --global | Out-Null
+      - name: Build the setup .exe
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$env:VERSION" "/DStageDir=..\dist\stage" installer\velora.iss
+      - name: Build the .msi
+        shell: pwsh
+        run: |
+          wix build installer\velora.wxs -arch x64 -d Version=$env:VERSION -d StageDir=dist\stage -o dist\Velora-$env:VERSION.msi
+
+      - name: Upload unsigned installers (input for signing)
+        if: ${{ env.SIGNING == 'true' }}
+        id: upload-installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: velora-installers-unsigned
+          path: |
+            dist/Velora-*-setup.exe
+            dist/Velora-*.msi
+      - name: Sign installers (SignPath)
+        if: ${{ env.SIGNING == 'true' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: velora
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: installers
+          github-artifact-id: ${{ steps.upload-installers.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist/signed-installers
+      - name: Use the signed installers
+        if: ${{ env.SIGNING == 'true' }}
+        shell: pwsh
+        run: Copy-Item dist/signed-installers/* dist -Force
+
+      - name: Install smoke test (per-user, no admin) and uninstall
+        shell: pwsh
+        run: |
+          # Never start Velora here: only the installer and uninstaller are exercised (files, shortcuts, uninstall entry).
+          $dir = Join-Path $env:RUNNER_TEMP "velora-install"
+          $setup = Get-ChildItem dist -Filter "Velora-*-setup.exe" | Select-Object -First 1
+          Start-Process $setup.FullName -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/DIR=$dir","/LOG=$env:RUNNER_TEMP\setup.log" -Wait
+          foreach ($f in "velora-shell.exe","velora-watchdog.exe","velora-files.exe","velora-settings.exe","LICENSE") {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "installed file missing: $f" }
+          }
+          Start-Process (Join-Path $dir "unins000.exe") -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait
+          Start-Sleep -Seconds 2
+          if (Test-Path (Join-Path $dir "velora-shell.exe")) { throw "uninstall left velora-shell.exe behind" }
+          # The MSI: install per user into a private folder, check, remove.
+          $msi = Get-ChildItem dist -Filter "Velora-*.msi" | Select-Object -First 1
+          $p = Start-Process msiexec.exe -ArgumentList "/i","`"$($msi.FullName)`"","/qn","/l*v","$env:RUNNER_TEMP\msi-install.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\msi-install.log" -Tail 40; throw "msi install failed ($($p.ExitCode))" }
+          $installed = Join-Path $env:LOCALAPPDATA "Programs\Velora\velora-shell.exe"
+          if (-not (Test-Path $installed)) { throw "msi did not install velora-shell.exe" }
+          $p = Start-Process msiexec.exe -ArgumentList "/x","`"$($msi.FullName)`"","/qn","/l*v","$env:RUNNER_TEMP\msi-uninstall.log" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\msi-uninstall.log" -Tail 40; throw "msi uninstall failed ($($p.ExitCode))" }
+          if (Test-Path $installed) { throw "msi uninstall left velora-shell.exe behind" }
+
+      - name: Checksums
+        shell: pwsh
+        run: pwsh tools/package.ps1 -Checksums
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: velora-release-${{ env.VERSION }}
+          path: |
+            dist/Velora-*-setup.exe
+            dist/Velora-*.msi
+            dist/Velora-*-portable.zip
+            dist/SHA256SUMS.txt
+
+      - name: Draft GitHub Release
+        if: ${{ github.ref_type == 'tag' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = if (Test-Path RELEASE_REPORT.md) { "RELEASE_REPORT.md" } else { $null }
+          $signed = if ($env:SIGNING -eq "true") { "Signed through SignPath Foundation." } else { "UNSIGNED: not yet code-signed (SignPath Foundation application pending). Verify the SHA-256 checksums." }
+          $args = @("release", "create", "${{ github.ref_name }}", "--draft", "--title", "Velora $env:VERSION", "--notes", "$signed See RELEASE_REPORT.md for gate levels, bench numbers and the honest list of what was not tested.")
+          if ($notes) { $args = @("release", "create", "${{ github.ref_name }}", "--draft", "--title", "Velora $env:VERSION", "--notes-file", $notes) }
+          & gh @args
+          Get-ChildItem dist -File | Where-Object { $_.Name -match 'setup\.exe$|\.msi$|portable\.zip$|SHA256SUMS\.txt$' } | ForEach-Object { gh release upload "${{ github.ref_name }}" $_.FullName --clobber }
+          gh release upload "${{ github.ref_name }}" THIRD_PARTY_NOTICES.md --clobber
