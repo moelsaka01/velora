@@ -380,6 +380,7 @@ void AppIndex::Run() {
     }
     constexpr DWORD kPeriodicMs = 30 * 60 * 1000;
     for (;;) {
+        while (paused_) Sleep(5000);  // gaming mode
         Set(ScanInstalledApps(), true);
         if (watches.empty()) {
             Sleep(kPeriodicMs);

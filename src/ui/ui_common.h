@@ -25,7 +25,9 @@ inline constexpr UINT kMsgIconsLoaded = WM_APP + 41;
 // SystemUsesLightTheme (taskbar/shell surfaces). Light when the value is missing.
 tokens::Theme SystemTheme();
 // "Transparency effects" system setting; false => draw opaque surfaces.
+// False while gaming mode is on (no blur, opaque panels) or when Windows' transparency effects are off.
 bool TransparencyEnabled();
+void SetEffectsSuppressed(bool suppressed);
 
 inline float Scale(UINT dpi) { return static_cast<float>(dpi) / 96.0f; }
 

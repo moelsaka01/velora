@@ -6,6 +6,7 @@
 // when a Start-menu folder changes or every 30 minutes. Opening the grid never scans.
 #pragma once
 
+#include <atomic>
 #include <functional>
 #include <mutex>
 #include <filesystem>
@@ -62,6 +63,8 @@ public:
     std::vector<AppEntry> Snapshot() const;
     // Snapshot() through the launcher transform (the Apple group, when enabled); the Dock keeps using Snapshot().
     std::vector<AppEntry> SnapshotForLauncher() const;
+    // Gaming mode: no scans (and no change notifications) while paused; the cached list stays usable.
+    void SetPaused(bool paused) { paused_ = paused; }
     void SetLauncherTransform(std::function<std::vector<AppEntry>(std::vector<AppEntry>)> fn);
     unsigned Generation() const;
 
@@ -74,6 +77,7 @@ private:
     std::vector<AppEntry> entries_;
     unsigned generation_ = 0;
     bool started_ = false;
+    std::atomic<bool> paused_{false};
     HWND notify_ = nullptr;
     UINT message_ = 0;
     std::function<std::vector<AppEntry>(std::vector<AppEntry>)> launcherTransform_;
