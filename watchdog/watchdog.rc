@@ -1,0 +1,29 @@
+// Version information of velora-watchdog.exe (file properties, installers, antivirus reputation).
+#include <winver.h>
+#include "core/version.h"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION VELORA_VERSION_MAJOR, VELORA_VERSION_MINOR, VELORA_VERSION_PATCH, 0
+ PRODUCTVERSION VELORA_VERSION_MAJOR, VELORA_VERSION_MINOR, VELORA_VERSION_PATCH, 0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "Velora contributors"
+      VALUE "FileDescription", "Velora Watchdog"
+      VALUE "FileVersion", VELORA_VERSION
+      VALUE "InternalName", "velora-watchdog"
+      VALUE "LegalCopyright", "Apache-2.0"
+      VALUE "OriginalFilename", "velora-watchdog.exe"
+      VALUE "ProductName", "Velora"
+      VALUE "ProductVersion", VELORA_VERSION
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

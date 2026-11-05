@@ -16,7 +16,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 if ($Checksums) {
-  $lines = Get-ChildItem $Out -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" } | Sort-Object Name | ForEach-Object {
+  $lines = Get-ChildItem $Out -File | Where-Object { $_.Name -match '(setup\.exe|\.msi|portable\.zip)$' } | Sort-Object Name | ForEach-Object {
     $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
     "$h  $($_.Name)"
   }
