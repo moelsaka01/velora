@@ -1,6 +1,6 @@
 # Velora v1.0.0 (Level 1) - release report
 
-**Status: DRAFT, numbers filled from the guided session of 2026-11-05** (Windows 11 10.0.26200, one 1280x720 laptop screen at 150 %, dark mode, non-elevated, McAfee scanning off by the owner, Release build of main plus #81). Items marked *unmeasured* or *not verified* were not covered by that session. Nothing here is a claim of full acceptance. Release rule (CLAUDE.md sec. 12): a release needs the G1 gates, the switch safety gate, the bench and a working installer; the open items below must be closed or knowingly accepted before the draft GitHub Release is published.
+**Status: RELEASED as v1.0.0 (2026-11-05).** Numbers come from the guided session of 2026-11-05 (Windows 11 10.0.26200, one 1280x720 laptop screen at 150 %, dark mode, non-elevated, McAfee scanning off by the owner) and from CI. Items marked *unmeasured* or *not verified* were not covered. Nothing here is a claim of full acceptance; the release is knowingly published with those open items, unsigned (see below).
 
 Direction: v1.0 = **Level 1**, a blend of Windows and macOS (no injection). Level 2, the complete Windows-to-macOS transformation with opt-in injected title bars, is v2.0, planned for late 2026 / early 2027.
 
@@ -26,7 +26,7 @@ Direction: v1.0 = **Level 1**, a blend of Windows and macOS (no injection). Leve
 | desktops | **unsupported in v1.0** | not built | |
 | hotkeys | partial | Search and Overview hotkeys (RegisterHotKey) | Cmd-style remapping not built |
 | updates | **unsupported** | the Settings button opens the Releases page | no updater, no rollback |
-| installer | built, CI-smoke-tested | Inno Setup .exe and WiX .msi install/uninstall on the CI runner | real desktop install/upgrade/uninstall; unsigned |
+| installer | built; **tested on a real desktop** | Inno Setup .exe and WiX .msi: per-user install (4.8 MB), run from the installed copy, uninstall while Velora runs (taskbar, work area, wallpaper, window styles restored first, no leftovers, settings kept), upgrade from 0.0.1 while running; also the CI smoke test on every build | unsigned; Start-menu shortcut click-through and SmartScreen behaviour not observed |
 | compat (macOS apps) | **not part of v1.0** | not started (Level 2 candidate) | |
 
 ## Bench (tools/bench.ps1, 3 runs, 2026-11-05, raw CSVs `bench/20261105-144041_*`)
