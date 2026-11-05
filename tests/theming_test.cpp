@@ -86,6 +86,9 @@ void PolicyTests() {
         return Evaluate(f, on);
     };
     CHECK(with([](WindowFacts& f) { f.ownProcess = true; }) == Skip::OwnWindow);
+    CHECK(with([](WindowFacts& f) { f.exeName = L"velora-files.exe"; }) == Skip::OwnWindow);  // Velora's other programs
+    CHECK(with([](WindowFacts& f) { f.exeName = L"velora-settings.exe"; }) == Skip::OwnWindow);
+    CHECK(with([](WindowFacts& f) { f.exeName = L"velora.exe"; }) == Skip::None && with([](WindowFacts& f) { f.exeName = L"velora-notes.txt"; }) == Skip::None);
     CHECK(with([](WindowFacts& f) { f.uncontrollable = true; }) == Skip::Uncontrollable);
     CHECK(with([](WindowFacts& f) { f.fullscreen = true; }) == Skip::Fullscreen);
     CHECK(with([](WindowFacts& f) { f.cloaked = true; }) == Skip::Cloaked);

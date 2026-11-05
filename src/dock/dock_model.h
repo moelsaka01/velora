@@ -29,6 +29,10 @@ struct DockWindow {
     bool foreground = false;
 };
 
+// Windows of the shell's own helper processes (notification toasts, Start, search, input panel, lock screen) are not apps:
+// they never get a Dock tile. `exePath` is the window's process image.
+bool IsShellHostWindow(const std::wstring& exePath);
+
 struct DockItem {
     DockApp app;
     bool pinned = false;

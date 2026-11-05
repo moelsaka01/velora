@@ -1,0 +1,41 @@
+﻿[
+    {
+        "run":  1,
+        "enterMs":  291,
+        "exitMs":  437,
+        "committedDeltaMB":  -54.1,
+        "shellPlusWatchdogPrivateMB":  78.7,
+        "shellPlusWatchdogWorkingSetMB":  120.4,
+        "gridOpenPrivateMB":  null,
+        "gridClosedPrivateMB":  null,
+        "idleCpuPercent":  0,
+        "gpuLocalMB":  41,
+        "csv":  "C:\\velora\\bench\\20261105-144041_run1.csv"
+    },
+    {
+        "run":  2,
+        "enterMs":  143,
+        "exitMs":  433,
+        "committedDeltaMB":  25.8,
+        "shellPlusWatchdogPrivateMB":  80.2,
+        "shellPlusWatchdogWorkingSetMB":  121.5,
+        "gridOpenPrivateMB":  null,
+        "gridClosedPrivateMB":  null,
+        "idleCpuPercent":  0,
+        "gpuLocalMB":  42.2,
+        "csv":  "C:\\velora\\bench\\20261105-144041_run2.csv"
+    },
+    {
+        "run":  3,
+        "enterMs":  136,
+        "exitMs":  458,
+        "committedDeltaMB":  9.8,
+        "shellPlusWatchdogPrivateMB":  79.8,
+        "shellPlusWatchdogWorkingSetMB":  121.4,
+        "gridOpenPrivateMB":  null,
+        "gridClosedPrivateMB":  null,
+        "idleCpuPercent":  0,
+        "gpuLocalMB":  42.2,
+        "csv":  "C:\\velora\\bench\\20261105-144041_run3.csv"
+    }
+]

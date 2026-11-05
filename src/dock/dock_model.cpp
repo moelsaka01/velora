@@ -46,6 +46,13 @@ bool IsFilesystemTarget(const std::wstring& launch) {
 }
 }  // namespace
 
+bool IsShellHostWindow(const std::wstring& exePath) {
+    const std::wstring name = FileNameOf(exePath);
+    for (const wchar_t* host : {L"shellexperiencehost.exe", L"startmenuexperiencehost.exe", L"searchhost.exe", L"searchapp.exe", L"textinputhost.exe", L"lockapp.exe"})
+        if (Ieq(name, host)) return true;
+    return false;
+}
+
 std::vector<DockApp> VisiblePinned(const std::vector<DockApp>& pinned,
                                    const std::function<bool(const std::wstring&)>& fileExists) {
     std::vector<DockApp> out;

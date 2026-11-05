@@ -254,6 +254,9 @@ int main() {
         CHECK(vis[0].internalApps && vis[1].name == L"Files" && vis[2].name == L"Present" && vis[3].name == L"Settings" && vis[4].name == store.name);
     }
 
+    CHECK(IsShellHostWindow(L"C:\\Windows\\SystemApps\\ShellExperienceHost_cw5n1h2txyewy\\ShellExperienceHost.exe") && IsShellHostWindow(L"C:\\Windows\\System32\\LockApp.exe"));
+    CHECK(!IsShellHostWindow(L"C:\\Windows\\explorer.exe") && !IsShellHostWindow(L"") && !IsShellHostWindow(L"C:\\x\\NotShellExperienceHost.exe"));
+
     auto defaults = DefaultPinned();
     CHECK(!defaults.empty() && defaults[0].internalApps);
 

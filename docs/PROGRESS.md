@@ -233,3 +233,8 @@ Direction recorded first: v1.0 = **Level 1**, a blend of Windows and macOS (no i
 ### Per-monitor bars (PR feat/multimonitor)
 - Built: `monitors/` (pure plan + diff + work-area restore planning + follow tracker; runtime MonitorBars), `dock.on` in Settings, secondary menu bars (app menus + clock), Docks on every monitor or following the pointer, hot-plug / resolution / DPI / primary-change handling (debounced WM_DISPLAYCHANGE), state.json records extra appbars and late monitors; restore uses the same pure rules.
 - Tests: monitor_layout_test (61 checks, simulated sets). Switch gate unchanged (test profile creates no extra bars). **Not verified on real multi-monitor hardware.**
+
+### Guided session (2026-11-05) - results
+- Run with the owner (McAfee off): everything in docs/VALIDATION.md "Guided session" paragraph; bench medians in RELEASE_REPORT.md (private 79.8 MB, enter 143 ms, exit 437 ms, idle CPU 0 %).
+- Bugs found live and fixed in #81: Settings window top under the menu bar (now centred in the work area); velora-files/-settings were themed (now never); notification toasts (ShellExperienceHost) appeared in the Dock with a blank tile (now ignored); the Dock showed Velora Files and File Explorer with the same blue folder (Velora Files now has its own icon, assets/icons/velora-files.svg).
+- Resume: merge #81, tag v1.0.0 only after the owner has turned McAfee back on and decided about the open items in RELEASE_REPORT.md (second monitor, real game, installers on a real desktop). SignPath application and the antivirus forms are still the owner's.

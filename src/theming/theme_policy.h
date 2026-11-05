@@ -68,6 +68,8 @@ bool IsAntiCheatExe(std::wstring_view lowerExeName);
 bool IsGameLibraryPath(std::wstring_view lowerPath);
 bool IsGameWindowClass(std::wstring_view className);
 bool IsShellWindowClass(std::wstring_view className);
+// Velora's own programs (velora-shell/-watchdog/-files/-settings): they draw their own chrome, so they are never themed.
+bool IsVeloraExe(std::wstring_view lowerExeName);
 bool IsExcluded(const Config& c, std::wstring_view lowerExeName);
 
 std::wstring Lower(std::wstring_view s);
