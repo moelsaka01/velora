@@ -326,6 +326,8 @@ int Watch(DWORD shellPid) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);  // later DLL loads never come from the current directory
+
     log::Init("velora-watchdog");
 
     int argc = 0;

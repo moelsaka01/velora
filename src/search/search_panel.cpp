@@ -60,7 +60,10 @@ PanelHooks DefaultHooks() {
     h.reveal = [](const std::wstring& path) {
         if (!apps::LaunchFilesApp(L"", path)) {  // no Files app next to the shell: Explorer can do it
             const std::wstring args = L"/select,\"" + path + L"\"";
-            ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+            wchar_t win[MAX_PATH] = {};
+            GetWindowsDirectoryW(win, MAX_PATH);
+            const std::wstring explorer = std::wstring(win) + L"\\explorer.exe";  // not a search through PATH / the current directory
+            ShellExecuteW(nullptr, L"open", explorer.c_str(), args.c_str(), nullptr, SW_SHOWNORMAL);
         }
     };
     return h;

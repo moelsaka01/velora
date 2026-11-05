@@ -352,6 +352,8 @@ int SendCommand(const char* type, const json::Value& payload = {}) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);  // later DLL loads never come from the current directory
+
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     log::Init("velora-shell");
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -436,6 +438,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         return 2;
     }
     g_taskbarCreated = RegisterWindowMessageW(CurrentProfile().taskbarCreatedMessage.c_str());
+
+    // Velora is a normal-user program (CLAUDE.md 0.8). Elevated, it would read user-writable files (settings.json, state.json) with
+    // administrator rights and its pipe would be a way into an elevated process: refuse, unless the owner overrides it explicitly.
+    if (!CurrentProfile().IsTest() && win::IsSelfElevated() && !GetEnvironmentVariableW(L"VELORA_ALLOW_ELEVATED", nullptr, 0)) {
+        log::Error("refusing to run elevated (set VELORA_ALLOW_ELEVATED=1 to override)");
+        MessageBoxW(nullptr, L"Velora runs as a normal user. Start it without \"Run as administrator\".", L"Velora", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+        return 3;
+    }
 
     EventBus bus;
     g_bus = &bus;

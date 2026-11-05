@@ -17,8 +17,7 @@ on:
       - ".github/workflows/release.yml"
 
 permissions:
-  contents: write
-  id-token: write
+  contents: write  # only the tag run creates a draft release; nothing else needs a token
 
 jobs:
   release:
