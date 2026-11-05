@@ -244,3 +244,6 @@ Direction recorded first: v1.0 = **Level 1**, a blend of Windows and macOS (no i
 - Version bumped to 1.0.0 in vcpkg.json (the release workflow requires the tag to match).
 ### Security review (2026-11-05)
 - docs/SECURITY_REVIEW.md: surfaces checked, 7 findings fixed, residual risks listed (unsigned binaries, same-user trust, no independent audit). security_test (3 046 checks) is new. Build flags verified in the PE headers (ASLR, high-entropy ASLR, DEP, CFG).
+
+### Installer test on a real desktop (2026-11-05, owner present, McAfee off)
+- CI-built 1.0.0 MSI and setup.exe (unsigned, checksums match): per-user install (4.8 MB, 3 Start-menu shortcuts), Velora started from the installed copy, **uninstall while Velora runs** restores Windows first (taskbar, work area 672 px, no process, no files, marker removed, settings.json kept), **upgrade from 0.0.1 while running** exits Velora and restores before replacing files; both installers pass. Found: SHA256SUMS listed a .wixpdb, and the shell/watchdog had no version info (fixed in the release-polish PR).
