@@ -20,7 +20,8 @@ if ($Checksums) {
     $h = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
     "$h  $($_.Name)"
   }
-  $lines | Set-Content -Encoding ascii (Join-Path $Out "SHA256SUMS.txt")
+  # LF line endings: `sha256sum -c` on Linux/macOS rejects CRLF
+  [System.IO.File]::WriteAllText((Join-Path (Resolve-Path $Out) "SHA256SUMS.txt"), (($lines -join "`n") + "`n"), (New-Object System.Text.ASCIIEncoding))
   $lines
   return
 }
