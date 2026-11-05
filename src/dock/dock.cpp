@@ -376,7 +376,9 @@ void Dock::Rebuild() {
     std::vector<DockWindow> windows;
     std::vector<std::uint64_t> live;
     for (const auto& [h, w] : tracker_.Windows()) {
-        windows.push_back(Describe(h, w));
+        DockWindow d = Describe(h, w);
+        if (IsShellHostWindow(d.exePath)) continue;  // a notification toast, not an app
+        windows.push_back(std::move(d));
         live.push_back(ToInt(h));
     }
     std::erase_if(aumidCache_, [&](const auto& kv) { return !std::binary_search(live.begin(), live.end(), kv.first); });
