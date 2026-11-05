@@ -3,7 +3,7 @@
   Velora per-user MSI (WiX v4+). Built by .github/workflows/release.yml:
     wix build installer/velora.wxs -d Version=1.0.0 -d StageDir=dist/stage -o dist/Velora-1.0.0.msi
   Installs under %LOCALAPPDATA%\Programs\Velora without administrator rights. The uninstall restores the Windows desktop first
-  (velora-shell --exit, then velora-watchdog --restore) before any file is removed.
+  (velora-shell exit, then velora-watchdog restore) before any file is removed.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Velora" Manufacturer="Velora contributors" Version="$(Version)" UpgradeCode="04071D64-4DCE-4A2E-90EE-A362E6AEC6E3"
