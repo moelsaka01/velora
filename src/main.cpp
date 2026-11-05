@@ -30,6 +30,7 @@
 #include "dock/dock.h"
 #include "menubar/menubar.h"
 #include "control/control_center.h"
+#include "gaming/gaming_mode.h"
 #include "overview/overview.h"
 #include "search/search_core.h"
 #include "search/search_hotkey.h"
@@ -63,6 +64,7 @@ dock::Dock* g_dock = nullptr;
 menubar::MenuBar* g_menuBar = nullptr;
 overview::Overview* g_overview = nullptr;
 control::ControlCenter* g_control = nullptr;
+std::function<void()>* g_onTick = nullptr;  // runs on the 1 Hz tick (gaming mode's leave delay needs the clock)
 overview::HotCorner g_hotCorner;
 EventBus* g_bus = nullptr;
 constexpr UINT kMsgTrim = WM_APP + 43;  // the Apps panel closed: schedule the memory give-back
