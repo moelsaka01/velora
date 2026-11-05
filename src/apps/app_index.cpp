@@ -334,6 +334,22 @@ std::vector<AppEntry> AppIndex::Snapshot() const {
     return entries_;
 }
 
+std::vector<AppEntry> AppIndex::SnapshotForLauncher() const {
+    std::function<std::vector<AppEntry>(std::vector<AppEntry>)> transform;
+    std::vector<AppEntry> list;
+    {
+        std::lock_guard lock(mutex_);
+        transform = launcherTransform_;
+        list = entries_;
+    }
+    return transform ? transform(std::move(list)) : list;
+}
+
+void AppIndex::SetLauncherTransform(std::function<std::vector<AppEntry>(std::vector<AppEntry>)> fn) {
+    std::lock_guard lock(mutex_);
+    launcherTransform_ = std::move(fn);
+}
+
 unsigned AppIndex::Generation() const {
     std::lock_guard lock(mutex_);
     return generation_;

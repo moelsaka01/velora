@@ -48,7 +48,7 @@ std::wstring FolderOf(const std::wstring& path) {
 
 PanelHooks DefaultHooks() {
     PanelHooks h;
-    h.apps = [] { return apps::AppIndex::Get().Snapshot(); };
+    h.apps = [] { return apps::AppIndex::Get().SnapshotForLauncher(); };
     h.launchApp = [](const apps::AppEntry& a) { apps::Launch(a); };
     h.openPath = [](const std::wstring& path, bool folder) {
         if (folder) {

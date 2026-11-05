@@ -1,4 +1,5 @@
 #include "files/files_window.h"
+#include "apple/apple_options.h"
 #include "ui/window_chrome.h"
 
 #include <dwmapi.h>
@@ -541,6 +542,11 @@ void FilesWindow::ReloadSidebar() {
     header(L"Favorites");
     for (const Place& p : FavoritePlaces()) {
         side_.push_back({p.label, p.path, p.glyph, false, y});
+        y += kSidebarRow;
+    }
+    // iCloud Drive / Photos (Settings > Apple services): read from the local folders iCloud for Windows keeps, nothing else.
+    for (const auto& f : apple::ICloudFolders(apple::LoadOptions())) {
+        side_.push_back({f.label, f.path, 2, false, y});  // the document glyph
         y += kSidebarRow;
     }
     y += 10;

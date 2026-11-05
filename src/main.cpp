@@ -23,6 +23,7 @@
 #include "core/settings_file.h"
 #include "core/state_store.h"
 #include "core/text.h"
+#include "apple/apple_apps.h"
 #include "apps/app_index.h"
 #include "apps/apps_grid.h"
 #include "apps/files_launch.h"
@@ -474,6 +475,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     menuActions.openControl = [] { if (g_control) g_control->Toggle(); };
     // Cached index first (instant), then a background refresh. Skipped in the test profile: the gate
     // measures switching, and a real-machine scan per spawned shell would only add noise.
+    // The Apple group (Settings > Apple services, off by default) is part of the launcher and Search, not of the Dock.
+    apps::AppIndex::Get().SetLauncherTransform([](std::vector<apps::AppEntry> list) { return apple::WithAppleGroup(std::move(list), apple::LoadOptions()); });
     apps::AppIndex::Get().LoadCache();
     if (!CurrentProfile().IsTest()) apps::AppIndex::Get().StartBackground(g_window, kMsgAppsChanged);
     menubar::MenuBar menuBar(bus, tracker, menuActions);
