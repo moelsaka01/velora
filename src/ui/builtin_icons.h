@@ -8,7 +8,7 @@
 
 namespace velora::ui {
 
-enum class BuiltinIcon { None, Files, Settings, Terminal, CommandPrompt, Calculator, Camera, Clock, ControlPanel, Notepad, TaskManager,
+enum class BuiltinIcon { None, Files, VeloraFiles, Settings, Terminal, CommandPrompt, Calculator, Camera, Clock, ControlPanel, Notepad, TaskManager,
                               CharacterMap, ComputerManagement, ComponentServices, DiskCleanup, EventViewer, RegistryEditor, Services,
                               PowerShell, SnippingTool, Paint };
 

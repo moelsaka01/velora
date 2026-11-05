@@ -84,9 +84,16 @@ bool SettingsWindow::Create(const std::filesystem::path& file, int page, int sho
     page_ = std::clamp(page, 0, static_cast<int>(pages_.size()) - 1);
 
     const UINT sysDpi = GetDpiForSystem();
-    const int w = static_cast<int>(820 * sysDpi / 96.0f), h = static_cast<int>(560 * sysDpi / 96.0f);
+    // Centred in the work area of the pointer's monitor (CW_USEDEFAULT put the top of the window under the menu bar).
+    POINT cursor{};
+    GetCursorPos(&cursor);
+    MONITORINFO mi{sizeof mi};
+    GetMonitorInfoW(MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY), &mi);
+    const int workW = mi.rcWork.right - mi.rcWork.left, workH = mi.rcWork.bottom - mi.rcWork.top;
+    const int w = std::min(static_cast<int>(820 * sysDpi / 96.0f), workW - 40), h = std::min(static_cast<int>(560 * sysDpi / 96.0f), workH - 40);
+    const int x = mi.rcWork.left + (workW - w) / 2, y = mi.rcWork.top + (workH - h) / 2;
     hwnd_ = CreateWindowExW(WS_EX_NOREDIRECTIONBITMAP, kClass, L"Velora Settings", WS_POPUP | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU,
-                            CW_USEDEFAULT, CW_USEDEFAULT, w, h, nullptr, nullptr, instance_, this);
+                            x, y, w, h, nullptr, nullptr, instance_, this);
     if (!hwnd_) {
         log::Error("settings: CreateWindowEx failed");
         return false;

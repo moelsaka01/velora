@@ -35,7 +35,7 @@ int main() {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     struct { const wchar_t* src; BuiltinIcon want; } map[] = {
         {L"C:\\Windows\\explorer.exe", BuiltinIcon::Files},
-        {L"C:\\Program Files\\Velora\\velora-files.exe", BuiltinIcon::Files},
+        {L"C:\\Program Files\\Velora\\velora-files.exe", BuiltinIcon::VeloraFiles},
         {L"C:\\Program Files\\Velora\\velora-settings.exe", BuiltinIcon::Settings},
         {L"C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\System Tools\\File Explorer.lnk", BuiltinIcon::Files},
         {L"shell:AppsFolder\\windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel", BuiltinIcon::Settings},
@@ -72,7 +72,7 @@ int main() {
         }
     }
 
-    const BuiltinIcon all[] = {BuiltinIcon::Files,      BuiltinIcon::Settings, BuiltinIcon::Terminal,     BuiltinIcon::CommandPrompt,
+    const BuiltinIcon all[] = {BuiltinIcon::Files, BuiltinIcon::VeloraFiles,      BuiltinIcon::Settings, BuiltinIcon::Terminal,     BuiltinIcon::CommandPrompt,
                                BuiltinIcon::Calculator, BuiltinIcon::Camera,   BuiltinIcon::Clock,        BuiltinIcon::ControlPanel,
                                BuiltinIcon::Notepad,    BuiltinIcon::TaskManager, BuiltinIcon::CharacterMap,
                                BuiltinIcon::ComputerManagement, BuiltinIcon::ComponentServices, BuiltinIcon::DiskCleanup,

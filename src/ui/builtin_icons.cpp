@@ -17,6 +17,7 @@ namespace velora::ui {
 
 // Defined in the generated builtin_icons_data.cpp (CMake embeds assets/icons/*.svg, name = file stem, '-' -> '_').
 extern const char* const kSvg_files;
+extern const char* const kSvg_velora_files;
 extern const char* const kSvg_settings;
 extern const char* const kSvg_terminal;
 extern const char* const kSvg_cmd;
@@ -84,7 +85,7 @@ BuiltinIcon BuiltinIconFor(const std::wstring& source) {
         return BuiltinIcon::None;
     }
     // Velora's own apps (Dock pins point at the executables): the tile would otherwise be the letter "F" / "S".
-    if (stem == L"velora-files") return BuiltinIcon::Files;
+    if (stem == L"velora-files") return BuiltinIcon::VeloraFiles;  // Velora Files has its own icon, distinct from File Explorer's
     if (stem == L"velora-settings") return BuiltinIcon::Settings;
     if (stem == L"explorer" || stem == L"file explorer") return BuiltinIcon::Files;
     if (stem == L"settings") return BuiltinIcon::Settings;
@@ -114,6 +115,7 @@ BuiltinIcon BuiltinIconFor(const std::wstring& source) {
 const char* BuiltinIconSvg(BuiltinIcon i) {
     switch (i) {
         case BuiltinIcon::Files: return kSvg_files;
+        case BuiltinIcon::VeloraFiles: return kSvg_velora_files;
         case BuiltinIcon::Settings: return kSvg_settings;
         case BuiltinIcon::Terminal: return kSvg_terminal;
         case BuiltinIcon::CommandPrompt: return kSvg_cmd;
@@ -140,6 +142,7 @@ const char* BuiltinIconSvg(BuiltinIcon i) {
 const char* BuiltinIconName(BuiltinIcon i) {
     switch (i) {
         case BuiltinIcon::Files: return "files";
+        case BuiltinIcon::VeloraFiles: return "velora-files";
         case BuiltinIcon::Settings: return "settings";
         case BuiltinIcon::Terminal: return "terminal";
         case BuiltinIcon::CommandPrompt: return "cmd";

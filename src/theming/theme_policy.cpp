@@ -90,6 +90,8 @@ bool IsShellWindowClass(std::wstring_view c) {
     return false;
 }
 
+bool IsVeloraExe(std::wstring_view n) { return n.rfind(L"velora-", 0) == 0 && n.size() > 11 && n.substr(n.size() - 4) == L".exe"; }
+
 bool IsExcluded(const Config& c, std::wstring_view n) {
     if (n.empty()) return false;
     for (const auto& e : c.excludedApps)
@@ -99,7 +101,7 @@ bool IsExcluded(const Config& c, std::wstring_view n) {
 
 Skip Evaluate(const WindowFacts& w, const Config& c) {
     if (!c.enabled) return Skip::Disabled;
-    if (w.ownProcess) return Skip::OwnWindow;
+    if (w.ownProcess || IsVeloraExe(w.exeName)) return Skip::OwnWindow;
     if (w.uncontrollable) return Skip::Uncontrollable;
     if (w.fullscreen) return Skip::Fullscreen;
     if (w.cloaked) return Skip::Cloaked;
