@@ -8,5 +8,7 @@ namespace velora {
 
 bool SettingBool(const char* dottedKey, bool def);
 std::string SettingString(const char* dottedKey, const std::string& def);
+// Read-modify-write of one boolean (other keys are kept; atomic replace). False when the file cannot be written.
+bool SetSettingBool(const char* dottedKey, bool value);
 
 }  // namespace velora
