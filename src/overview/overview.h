@@ -25,6 +25,8 @@ public:
     Overview(const Overview&) = delete;
     Overview& operator=(const Overview&) = delete;
 
+    // Gaming mode: no thumbnails while a game is in front.
+    void SetBlocked(bool blocked) { blocked_ = blocked; if (blocked) Hide(); }
     void Toggle() { Visible() ? Hide() : Show(); }
     void Show();
     void Hide();
@@ -67,6 +69,7 @@ private:
     int hover_ = -1, selected_ = -1;
     Microsoft::WRL::ComPtr<ID2D1Bitmap> wall_;
     bool wallTried_ = false;
+    bool blocked_ = false;
     std::function<void()> onHidden_;
 };
 

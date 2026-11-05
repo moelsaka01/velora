@@ -74,7 +74,7 @@ void Overview::Collect(HMONITOR monitor) {
 }
 
 void Overview::Show() {
-    if (hwnd_) return;
+    if (hwnd_ || blocked_) return;
     if (!RegisterOnce(instance_, &Overview::WndProc)) return;
     POINT pt{};
     GetCursorPos(&pt);

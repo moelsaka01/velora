@@ -1,5 +1,7 @@
 #include "ui/ui_common.h"
 
+#include <atomic>
+
 #include <commctrl.h>
 #include <commoncontrols.h>
 #include <dwrite_3.h>
@@ -49,7 +51,9 @@ tokens::Theme SystemTheme() {
     return RegDword(kPersonalize, L"SystemUsesLightTheme", 1) ? tokens::Theme::Light : tokens::Theme::Dark;
 }
 
-bool TransparencyEnabled() { return RegDword(kPersonalize, L"EnableTransparency", 1) != 0; }
+static std::atomic<bool> g_effectsSuppressed{false};
+void SetEffectsSuppressed(bool suppressed) { g_effectsSuppressed = suppressed; }
+bool TransparencyEnabled() { return !g_effectsSuppressed && RegDword(kPersonalize, L"EnableTransparency", 1) != 0; }
 
 D2D1_COLOR_F Rgba(tokens::Color c, float alphaMul) {
     float a = ((c.argb >> 24) & 0xFF) / 255.0f * alphaMul;

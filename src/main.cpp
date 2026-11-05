@@ -30,6 +30,7 @@
 #include "dock/dock.h"
 #include "menubar/menubar.h"
 #include "control/control_center.h"
+#include "gaming/gaming_mode.h"
 #include "overview/overview.h"
 #include "search/search_core.h"
 #include "search/search_hotkey.h"
@@ -63,6 +64,7 @@ dock::Dock* g_dock = nullptr;
 menubar::MenuBar* g_menuBar = nullptr;
 overview::Overview* g_overview = nullptr;
 control::ControlCenter* g_control = nullptr;
+std::function<void()>* g_onTick = nullptr;  // runs on the 1 Hz tick (gaming mode's leave delay needs the clock)
 overview::HotCorner g_hotCorner;
 EventBus* g_bus = nullptr;
 constexpr UINT kMsgTrim = WM_APP + 43;  // the Apps panel closed: schedule the memory give-back
@@ -248,6 +250,7 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == kTimerTick) {
                 g_manager->Heartbeat();
                 g_manager->Reconcile();
+                if (g_onTick) (*g_onTick)();
             } else if (wp == kTimerRehideEarly || wp == kTimerRehideLate) {
                 KillTimer(h, wp);
                 g_manager->Reconcile();
@@ -520,6 +523,42 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     };
     configureOverview();
     bus.Subscribe(EventType::SettingsChanged, [&](const Event&) { configureOverview(); });
+    // Gaming mode: automatic while a fullscreen / borderless-fullscreen window is in front (or manual in Settings). Only Velora's own
+    // windows and threads are touched: animations and blur off, bars hidden, indexing / thumbnails / timers paused. Never the game.
+    gaming::Controller gamingCtl;
+    gaming::Mode gamingMode = gaming::ParseMode(SettingString("gaming.mode", "auto"));
+    auto setGaming = [&](bool on) {
+        log::Info(on ? "gaming mode: on" : "gaming mode: off");
+        ui::SetEffectsSuppressed(on);
+        dock.SetAnimationsEnabled(!on);
+        grid.SetAnimationsEnabled(!on);
+        searchPanel.SetAnimationsEnabled(!on);
+        apps::AppIndex::Get().SetPaused(on);
+        overviewPanel.SetBlocked(on);
+        if (on) {
+            grid.Hide();
+            searchPanel.Hide();
+            controlCenter.Hide();
+            KillTimer(g_window, kTimerHotCorner);
+        } else {
+            configureOverview();
+        }
+        for (HWND bar : {manager.DockBar().Hwnd(), manager.MenuBarBar().Hwnd()})
+            if (bar && IsWindow(bar)) ShowWindow(bar, on ? SW_HIDE : SW_SHOWNA);
+        ui::TrimProcessMemory(on ? "gaming mode on" : "gaming mode off");
+        bus.Post(EventType::GamingModeChanged);
+    };
+    auto evalGaming = [&] {
+        if (gamingCtl.Update(gamingMode, tracker.FullscreenActive(), GetTickCount64())) setGaming(gamingCtl.Active());
+    };
+    std::function<void()> onTick = evalGaming;
+    g_onTick = &onTick;
+    bus.Subscribe(EventType::FullscreenEntered, [&](const Event&) { evalGaming(); });
+    bus.Subscribe(EventType::FullscreenLeft, [&](const Event&) { evalGaming(); });
+    bus.Subscribe(EventType::SettingsChanged, [&](const Event&) {
+        gamingMode = gaming::ParseMode(SettingString("gaming.mode", "auto"));
+        evalGaming();
+    });
     manager.SetDockOptions(dock.Options(), dock.ReservedDip());
     bus.Subscribe(EventType::Entered, [&](const Event&) {
         menuBar.Attach(manager.MenuBarBar().Hwnd());
@@ -581,6 +620,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     search::UnregisterSearchHotkey(g_window, kHotkeySearch);
     UnregisterHotKey(g_window, kHotkeyOverview);
     KillTimer(g_window, kTimerHotCorner);
+    g_onTick = nullptr;
     overviewPanel.Hide();
     g_overview = nullptr;
     controlCenter.Hide();
