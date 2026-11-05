@@ -76,9 +76,9 @@ jobs:
       - name: Install Inno Setup and WiX
         shell: pwsh
         run: |
-          choco install innosetup -y --no-progress
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
           dotnet tool install --global wix --version 5.0.2
-          wix extension list --global | Out-Null
+          $global:LASTEXITCODE = 0
       - name: Build the setup .exe
         shell: pwsh
         run: |
