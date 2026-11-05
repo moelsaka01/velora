@@ -33,7 +33,7 @@ namespace tm = velora::tokens::menu;
 
 constexpr UINT kMsgMenus = WM_APP + 70;        // the app-menu worker has answers
 constexpr unsigned kBackItem = 0xFFFF;          // popup id of the "back" row in a drilled-in submenu
-enum Cmd : UINT { kAbout = 1, kSettings, kApps, kSearch, kSleep, kRestart, kShutDown, kExit };
+enum Cmd : UINT { kAbout = 1, kSettings, kApps, kSearch, kOverview, kControl, kSleep, kRestart, kShutDown, kExit };
 
 bool EnableShutdownPrivilege() {
     HANDLE token = nullptr;
@@ -288,6 +288,7 @@ void MenuBar::Layout() {
         x -= tw + tm::kTitleGap;
     };
     place(L"clock", clockText_);
+    place(L"control", L"\u2630");  // Control Center
     place(L"overflow", L"\u22EF");
     for (const auto& s : status_) place(s.id, s.text);
     LayoutTitles();
@@ -386,7 +387,7 @@ void MenuBar::Draw() {
 void MenuBar::ShowVeloraMenu() {
     std::vector<MenuItem> items = {
         {kAbout, L"About Velora"}, Separator(),
-        {kSettings, L"Settings\u2026"}, {kApps, L"Apps"}, {kSearch, L"Search"}, Separator(),
+        {kSettings, L"Settings\u2026"}, {kApps, L"Apps"}, {kSearch, L"Search"}, {kOverview, L"Overview"}, {kControl, L"Control Center"}, Separator(),
         {kSleep, L"Sleep"}, {kRestart, L"Restart\u2026"}, {kShutDown, L"Shut Down\u2026"}, Separator(),
         {kExit, L"Exit Velora"},
     };
@@ -427,6 +428,12 @@ void MenuBar::RunCommand(unsigned cmd) {
             break;
         case kSearch:
             if (actions_.openSearch) actions_.openSearch();
+            break;
+        case kOverview:
+            if (actions_.openOverview) actions_.openOverview();
+            break;
+        case kControl:
+            if (actions_.openControl) actions_.openControl();
             break;
         case kSleep:
             if (Confirm(hwnd_, L"Put this computer to sleep?")) DoSleep();
@@ -541,6 +548,11 @@ bool MenuBar::OnMessage(HWND h, UINT msg, WPARAM wp, LPARAM lp, LRESULT& result)
                 return true;
             }
             for (const auto& [key, rect] : rightItems_) {
+                if (key.rfind(L"control\n", 0) == 0 && inRect(rect, GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) {
+                    if (actions_.openControl) actions_.openControl();
+                    result = 0;
+                    return true;
+                }
                 if (key.rfind(L"overflow\n", 0) == 0 && inRect(rect, GET_X_LPARAM(lp), GET_Y_LPARAM(lp))) {
                     OpenTaskbarSettings();
                     result = 0;

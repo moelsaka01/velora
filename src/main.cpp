@@ -28,6 +28,7 @@
 #include "apps/files_launch.h"
 #include "dock/dock.h"
 #include "menubar/menubar.h"
+#include "control/control_center.h"
 #include "overview/overview.h"
 #include "search/search_core.h"
 #include "search/search_hotkey.h"
@@ -60,6 +61,7 @@ constexpr int kHotkeyOverview = 2;  // RegisterHotKey id of the Overview hotkey
 dock::Dock* g_dock = nullptr;
 menubar::MenuBar* g_menuBar = nullptr;
 overview::Overview* g_overview = nullptr;
+control::ControlCenter* g_control = nullptr;
 overview::HotCorner g_hotCorner;
 EventBus* g_bus = nullptr;
 constexpr UINT kMsgTrim = WM_APP + 43;  // the Apps panel closed: schedule the memory give-back
@@ -104,6 +106,14 @@ std::string HandleRequest(std::string_view raw) {
     if (t == ipc::msg::kSettingsChanged) {  // the Settings app wrote settings.json: modules re-read what they use
         if (g_bus) g_bus->Post(EventType::SettingsChanged);
         return Reply(req, 0, self);
+    }
+    if (t == ipc::msg::kOpenControl || t == ipc::msg::kCloseControl) {
+        if (!g_control) return Reply(req, 501, {}, "control center unavailable");
+        if (t == ipc::msg::kOpenControl) g_control->Show();
+        else g_control->Hide();
+        json::Value p;
+        p.Set("visible", g_control->Visible());
+        return Reply(req, 0, p);
     }
     if (t == ipc::msg::kOpenOverview || t == ipc::msg::kCloseOverview) {
         if (!g_overview) return Reply(req, 501, {}, "overview unavailable");
@@ -337,6 +347,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             else if (std::wstring(argv[i]) == L"--recover-only") recoverOnly = true;
             else if (std::wstring(argv[i]) == L"--open-apps") appsCommand = ipc::msg::kOpenApps;
             else if (std::wstring(argv[i]) == L"--close-apps") appsCommand = ipc::msg::kCloseApps;
+            else if (std::wstring(argv[i]) == L"--open-control") appsCommand = ipc::msg::kOpenControl;
+            else if (std::wstring(argv[i]) == L"--close-control") appsCommand = ipc::msg::kCloseControl;
             else if (std::wstring(argv[i]) == L"--open-overview") appsCommand = ipc::msg::kOpenOverview;
             else if (std::wstring(argv[i]) == L"--close-overview") appsCommand = ipc::msg::kCloseOverview;
             else if (std::wstring(argv[i]) == L"--close-search") appsCommand = ipc::msg::kCloseSearch;
@@ -458,6 +470,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     search::SearchPanel searchPanel(instance);
     g_search = &searchPanel;
     menuActions.openSearch = [] { if (g_search) g_search->Toggle(); };
+    menuActions.openOverview = [] { if (g_overview) g_overview->Toggle(); };
+    menuActions.openControl = [] { if (g_control) g_control->Toggle(); };
     // Cached index first (instant), then a background refresh. Skipped in the test profile: the gate
     // measures switching, and a real-machine scan per spawned shell would only add noise.
     apps::AppIndex::Get().LoadCache();
@@ -484,6 +498,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     }
     overview::Overview overviewPanel(instance, tracker);
     g_overview = &overviewPanel;
+    control::ControlCenter controlCenter(instance);
+    g_control = &controlCenter;
+    controlCenter.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
     overviewPanel.SetOnHidden([] { PostMessageW(g_window, kMsgTrim, 0, 0); });
     // Overview: hotkey (settings.json overview.hotkey, default Ctrl+Alt+Up) and the optional hot corner (overview.hotCorner).
     auto configureOverview = [&] {
@@ -514,6 +531,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     });
     bus.Subscribe(EventType::Exiting, [&](const Event&) {
         overviewPanel.Hide();
+        controlCenter.Hide();
         themingActive = false;
         themer.RestoreAll();
         dock.Detach();
@@ -562,6 +580,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     KillTimer(g_window, kTimerHotCorner);
     overviewPanel.Hide();
     g_overview = nullptr;
+    controlCenter.Hide();
+    g_control = nullptr;
     searchPanel.Hide();
     g_search = nullptr;
     ui::IconStore::Get().Shutdown();
