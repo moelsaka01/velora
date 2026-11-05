@@ -163,3 +163,4 @@ jobs:
           & gh @args
           Get-ChildItem dist -File | Where-Object { $_.Name -match 'setup\.exe$|\.msi$|portable\.zip$|SHA256SUMS\.txt$' } | ForEach-Object { gh release upload "${{ github.ref_name }}" $_.FullName --clobber }
           gh release upload "${{ github.ref_name }}" THIRD_PARTY_NOTICES.md --clobber
+          if (Test-Path docs/media/velora-demo.mp4) { gh release upload "${{ github.ref_name }}" docs/media/velora-demo.mp4 --clobber }  # the demo video
