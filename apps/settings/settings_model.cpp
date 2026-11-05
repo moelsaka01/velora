@@ -72,7 +72,9 @@ std::vector<Page> BuildPages() {
                   Note(L"Light and dark follow the Windows app mode (Windows Settings > Personalization > Colors).")}});
     p.push_back({L"Dock",
                  {Toggle("dock.magnification", L"Magnification", L"Icons grow under the pointer.", true),
-                  Note(L"The Dock lists your pinned apps and the apps that are running.")}});
+                  Pick("dock.on", L"Dock on", L"Which screens show a Dock. Every screen always gets a menu bar. Running apps appear on every Dock.", "primary",
+                       {{"primary", L"Primary screen"}, {"every", L"Every screen"}, {"follow", L"Follows the mouse"}}),
+                  Note(L"The Dock lists your pinned apps and the apps that are running. Not verified on real multi-monitor hardware yet.")}});
     p.push_back({L"Window theming",
                  {Toggle("theming.enabled", L"Theme other apps' windows", L"Rounded corners, dark or light caption and a neutral border through Windows' own window styles. Nothing is injected into apps.", true),
                   Toggle("theming.corners", L"Rounded corners", L"", true, "theming.enabled"),

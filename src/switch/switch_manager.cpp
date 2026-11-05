@@ -188,6 +188,21 @@ bool SwitchManager::Enter() {
     return true;
 }
 
+void SwitchManager::RecordExtras(const std::vector<HWND>& extraBars, const std::vector<MonitorState>& newMonitors) {
+    if (!entered_) return;
+    // Base appbars (menu bar, Dock) first, then the extras; recovery removes every one of them.
+    state_.appbarHwnds.clear();
+    for (HWND h : {bar_.Hwnd(), dock_.Hwnd()})
+        if (h) state_.appbarHwnds.push_back(static_cast<std::uint64_t>(reinterpret_cast<UINT_PTR>(h)));
+    for (HWND h : extraBars)
+        if (h) state_.appbarHwnds.push_back(static_cast<std::uint64_t>(reinterpret_cast<UINT_PTR>(h)));
+    for (const MonitorState& m : newMonitors) {
+        const bool known = std::any_of(state_.monitors.begin(), state_.monitors.end(), [&](const MonitorState& k) { return k.deviceName == m.deviceName; });
+        if (!known) state_.monitors.push_back(m);
+    }
+    if (!SaveState(state_, StatePath())) log::Warn("could not record the extra appbars / monitors in state.json");
+}
+
 void SwitchManager::RememberTrays() {
     knownTrays_ = FindTrayWindows();
     std::sort(knownTrays_.begin(), knownTrays_.end());
@@ -238,6 +253,7 @@ void SwitchManager::OnTaskbarCreated() {
     if (autoHideFallback_) SetTaskbarAutoHide(true);
     bar_.Reregister();
     dock_.Reregister();
+    if (extraReregister_) extraReregister_();
     RememberTrays();
     bus_.Post(EventType::ExplorerRestarted);
 }
@@ -256,6 +272,7 @@ void SwitchManager::Reconcile() {
                 log::Info("reconcile: taskbar windows changed; re-registering appbars");
                 bar_.Reregister();
                 dock_.Reregister();
+                if (extraReregister_) extraReregister_();
             }
         }
     }

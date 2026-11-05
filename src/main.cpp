@@ -29,6 +29,7 @@
 #include "apps/files_launch.h"
 #include "dock/dock.h"
 #include "menubar/menubar.h"
+#include "monitors/monitor_bars.h"
 #include "control/control_center.h"
 #include "gaming/gaming_mode.h"
 #include "overview/overview.h"
@@ -49,6 +50,8 @@ using namespace velora;
 constexpr UINT_PTR kTimerTick = 1;          // heartbeat + reconcile, 1 Hz
 constexpr UINT_PTR kTimerRehideEarly = 2;   // after TaskbarCreated
 constexpr UINT_PTR kTimerRehideLate = 3;
+constexpr UINT_PTR kTimerDisplay = 7;    // debounce of WM_DISPLAYCHANGE before the per-monitor bars are reconciled
+constexpr UINT_PTR kTimerFollow = 8;     // polls the pointer's monitor while the Dock follows the mouse
 constexpr UINT_PTR kTimerHotCorner = 6;  // polls the pointer for the Overview hot corner (only while enabled)
 constexpr UINT_PTR kTimerTrim = 5;  // memory give-back, a moment after the Apps panel closed
 constexpr UINT_PTR kTimerTaskbarTrailing = 4;  // trailing run of a TaskbarCreated burst
@@ -64,6 +67,7 @@ dock::Dock* g_dock = nullptr;
 menubar::MenuBar* g_menuBar = nullptr;
 overview::Overview* g_overview = nullptr;
 control::ControlCenter* g_control = nullptr;
+monitors::MonitorBars* g_monitorBars = nullptr;
 std::function<void()>* g_onTick = nullptr;  // runs on the 1 Hz tick (gaming mode's leave delay needs the clock)
 overview::HotCorner g_hotCorner;
 EventBus* g_bus = nullptr;
@@ -229,6 +233,15 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
                 ui::TrimProcessMemory("apps panel closed");
                 return 0;
             }
+            if (wp == kTimerDisplay) {
+                KillTimer(h, wp);
+                if (g_monitorBars) g_monitorBars->Sync();
+                return 0;
+            }
+            if (wp == kTimerFollow) {
+                if (g_monitorBars) g_monitorBars->PollFollow();
+                return 0;
+            }
             if (wp == kTimerHotCorner) {
                 if (!g_overview || g_overview->Visible()) return 0;
                 POINT pt{};
@@ -257,6 +270,8 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             }
             return 0;
         case WM_DISPLAYCHANGE:
+            if (msg == WM_DISPLAYCHANGE && g_monitorBars) SetTimer(h, kTimerDisplay, 500, nullptr);  // a hot-plug sends bursts: reconcile once
+            [[fallthrough]];
         case WM_SETTINGCHANGE:
             if (g_manager) g_manager->Reconcile();
             if (msg == WM_SETTINGCHANGE && lp && g_bus && std::wstring_view(reinterpret_cast<const wchar_t*>(lp)) == L"ImmersiveColorSet")
@@ -560,9 +575,27 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         evalGaming();
     });
     manager.SetDockOptions(dock.Options(), dock.ReservedDip());
+    // Per-monitor menu bars and Docks (Settings > Dock on). Never in the test profile: the gate must stay hermetic.
+    monitors::MonitorBars monitorBars(instance, bus, tracker, manager, menuActions, dockActions);
+    g_monitorBars = &monitorBars;
+    auto configureMonitors = [&] {
+        monitorBars.SetDockMode(monitors::ParseDockMode(SettingString("dock.on", "primary")));
+        KillTimer(g_window, kTimerFollow);
+        if (monitorBars.Mode() == monitors::DockMode::Follow) SetTimer(g_window, kTimerFollow, 300, nullptr);
+    };
+    manager.SetExtraReregister([&] { monitorBars.ReregisterAll(); });
+    bus.Subscribe(EventType::SettingsChanged, [&](const Event&) {
+        if (CurrentProfile().IsTest() || !manager.Entered()) return;
+        configureMonitors();
+        monitorBars.Sync();
+    });
     bus.Subscribe(EventType::Entered, [&](const Event&) {
         menuBar.Attach(manager.MenuBarBar().Hwnd());
         dock.Attach(&manager.DockBar());
+        if (!CurrentProfile().IsTest()) {
+            configureMonitors();
+            monitorBars.Sync();
+        }
         // Original Velora wallpaper per monitor (reversible: the original is backed up first and restored on
         // exit and by crash recovery). Never in the test profile: tests must not touch the real desktop.
         if (!CurrentProfile().IsTest() && wallpaper::Enabled()) wallpaper::ApplyVelora(ui::SystemTheme() == tokens::Theme::Dark);
@@ -572,6 +605,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         }
     });
     bus.Subscribe(EventType::Exiting, [&](const Event&) {
+        KillTimer(g_window, kTimerFollow);
+        KillTimer(g_window, kTimerDisplay);
+        monitorBars.Shutdown();
         overviewPanel.Hide();
         controlCenter.Hide();
         themingActive = false;
@@ -621,6 +657,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     UnregisterHotKey(g_window, kHotkeyOverview);
     KillTimer(g_window, kTimerHotCorner);
     g_onTick = nullptr;
+    g_monitorBars = nullptr;
     overviewPanel.Hide();
     g_overview = nullptr;
     controlCenter.Hide();
