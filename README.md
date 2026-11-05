@@ -24,6 +24,12 @@ Velora is a free, open-source (Apache-2.0) **blend of Windows and macOS** for Wi
 | **Gaming mode** | automatic when a fullscreen/borderless game is in front: animations, blur and background work off, bars hidden; the game is never touched |
 | **Apple services** (off by default) | launch or get Apple Music, Apple TV, Apple Devices, iCloud, iTunes; iCloud folders in Files; Velora never handles Apple credentials |
 
+### Demo
+
+![Velora demo: Dock, Apps, Search, Files, window theming, Overview, Control Center, Settings, and the Windows desktop coming back on exit](docs/media/velora-demo.gif)
+
+[Watch the full demo video](docs/media/velora-demo.mp4) (about one minute, no sound; also attached to every [release](https://github.com/moelsaka01/velora/releases)). Recorded from the real app with `tools/demo/record_demo.ps1`; the Wi-Fi name and personal file hits are blurred out by `tools/demo/make_demo.ps1`.
+
 ### Screenshots
 
 Captured from the real Velora Mode on a Windows 11 laptop (1280x720 at 150 %, dark mode), cropped to Velora's own pixels. Nothing here is a mock-up.
