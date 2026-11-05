@@ -62,3 +62,24 @@ desktop with nothing unsaved, and know where `velora-watchdog.exe --restore` and
 - [ ] **(live)** Stop the Windows Search service (or disable it) and search again: apps still found, the panel says "Windows Search is turned off. Showing apps only."; start it again and files return.
 - [ ] **(live)** Look: pill and results are dark frosted glass over a blurred wallpaper, spring open with no overshoot, check light/dark wallpaper and 100 / 150 / 200 % scaling.
 - [ ] **(live)** `settings.json` `{"search":{"hotkey":"Ctrl+Alt+Space"}}` changes the hotkey after restarting Velora.
+
+
+## Guided session for v1.0 (ONE session, McAfee scanning off by you, non-elevated PowerShell)
+Ask first; nothing below is run for you. Order matters (cheapest to most invasive). Put screenshots in `docs/media/` (names below) and note anything odd with the time so the log can be matched.
+
+0. **Before** (not elevated): `git pull`, build Release (`cmake --build build --config Release`), `ctest -C Release -E "switch_gate|release_hooks"` - all pass? Close other heavy apps; write the Windows build number.
+1. **Switch gate and recovery** (`ctest -C Release -R "switch_gate|release_hooks" --output-on-failure`, then by hand): enter/exit 5 times; `taskkill /F /IM velora-shell.exe` once (taskbar + wallpaper + window styles back within ~1 s); `velora-watchdog.exe --restore` with nothing running; Ctrl+Alt+Shift+Esc while Velora runs. Windows open before == after.
+2. **Look** (screenshots `docs/media/dock.png`, `menubar.png`, `apps.png`, `search.png`, `files.png`, `settings.png`, `overview.png`, `control-center.png`, `theming-before-after.png`): light and dark, 100 / 150 / 200 %.
+3. **Theming**: with Notepad, Explorer, Edge/Chrome, VS Code, Terminal, an Office app and Calculator open: which get rounded corners, dark/light caption, Mica; read the `theming:` lines in `%LOCALAPPDATA%\Velora\logs\velora-shell.log` and fill docs/THEMING_COMPAT.md "Real apps". An elevated PowerShell and a fullscreen video must be left alone. Add an app to the exclusions in Settings (it reverts at once); switch theming off (everything reverts); `taskkill /F` the shell (everything reverts, `theming_backup.json` gone).
+4. **App menus**: the 20-app table in docs/MENU_COMPAT.md (Notepad, Explorer, Paint, Edge, Chrome, VS Code, Word/Excel, Notepad++, 7-Zip, VLC, ...): menu visible? runs? (elevated apps show the name only).
+5. **Settings**: every toggle writes `settings.json` and takes effect live (theming, Dock magnification, Search/Overview hotkeys, gaming mode); "Open Velora when I sign in" adds/removes the HKCU Run value; "Restore now" restores Windows; a broken `settings.json` opens with defaults and a note.
+6. **Overview** (Ctrl+Alt+Up and the menu item, hot corner after switching it on): thumbnails live, click activates, Esc closes, UWP and minimised windows behave.
+7. **Control Center** (menu bar trigram item): volume/mute (hear it), brightness (laptop panel; an external monitor if you have one), Bluetooth on/off, Wi-Fi off/on, connect to a saved network, dark mode (the whole system flips; flip back), battery line, Sound settings link.
+8. **Apple services** (Settings > Apple services on): the Apple group appears first in Apps/Search with installed apps real and missing ones as "Get ..."; Store search opens; App Store (web) opens apps.apple.com in the browser; iCloud folders in Files if iCloud for Windows is set up. Off again: group gone.
+9. **Gaming mode**: set "Always on" - bars hide, animations/blur off, Overview refuses; "Off"; "Automatic" with a fullscreen/borderless game or a fullscreen video: bars hide within ~1 s, return ~1.5 s after leaving. The game's process list and window are untouched.
+10. **Multi-monitor** (if you have a second screen; v1.0 has one Dock and one menu bar, on the primary monitor): windows maximise to the work area on both, Files/Settings open where expected, Overview/Control Center/Search appear on the pointer's monitor, mixed DPI (100/150 %) crisp, unplugging the second monitor while running does not strand a window.
+11. **Files safety**: copy/move/rename/delete a few files between folders and drives, delete goes to the Recycle Bin, a locked file and a protected folder fail cleanly (the automated tests cover the same cases on a temp tree).
+12. **Bench**: `powershell -File tools\bench.ps1 -Runs 3` (clean boot if you can, 2 min wait): record medians/ranges in PROGRESS.md and RELEASE_REPORT.md, commit the raw CSVs in `bench/`. Budget: shell + watchdog private bytes < 150 MB, idle CPU < 1 %, enter < 1.5 s, exit < 1 s.
+13. **Installers** (on a spare user or VM if you can): run `Velora-<v>-setup.exe`, start Velora, upgrade over it, uninstall (the desktop must come back first), then the same with the `.msi`.
+
+Afterwards: tick the boxes above, move "pending" items in VALIDATION.md to "done" with the date, update RELEASE_REPORT.md, then tag.

@@ -92,6 +92,9 @@ std::vector<Page> BuildPages() {
                         {"Alt+Shift+Space", L"Alt+Shift+Space"},
                         {"Ctrl+Shift+Space", L"Ctrl+Shift+Space"},
                         {"none", L"None"}}),
+                  Pick("overview.hotkey", L"Overview", L"Shows every open window. If another program owns the combination, nothing is registered.", "Ctrl+Alt+Up",
+                       {{"Ctrl+Alt+Up", L"Ctrl+Alt+Up"}, {"Alt+F3", L"Alt+F3"}, {"Ctrl+Shift+Up", L"Ctrl+Shift+Up"}, {"none", L"None"}}),
+                  Toggle("overview.hotCorner", L"Overview hot corner", L"Rest the pointer in the top-left corner of a screen.", false),
                   Note(L"Changes apply at once.")}});
     p.push_back({L"Gaming mode",
                  {Pick("gaming.mode", L"Gaming mode", L"Turns animations, blur and background work off while a game is in front. Velora never touches the game itself.", "auto",

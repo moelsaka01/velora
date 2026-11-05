@@ -42,6 +42,8 @@ public:
         std::function<void()> openSettings;
         std::function<void()> openApps;
         std::function<void()> openSearch;
+        std::function<void()> openOverview;
+        std::function<void()> openControl;
     };
 
     MenuBar(EventBus& bus, win::WindowTracker& tracker, Actions actions);
