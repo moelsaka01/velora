@@ -1,0 +1,22 @@
+{
+  "name": "velora-ad",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "music": "python music/make_music.py",
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts VeloraAd out/velora-ad-1080p.mp4 --codec=h264 --crf=16",
+    "render:square": "remotion render src/index.ts VeloraAdSquare out/velora-ad-square-1080.mp4 --codec=h264 --crf=18",
+    "still": "remotion still src/index.ts VeloraAd out/still.png --frame=60"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.250",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.250"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.3",
+    "typescript": "5.5.4"
+  }
+}
