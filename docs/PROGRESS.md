@@ -229,3 +229,7 @@ Direction recorded first: v1.0 = **Level 1**, a blend of Windows and macOS (no i
 - Done: everything above that is merged; Settings/Overview/Control/Apple/theming/gaming are built and unit/CI tested; installers and the release workflow exist.
 - In progress: nothing. All Level 1 code and docs are on main; the draft RELEASE_REPORT.md still needs the guided-session numbers.
 - Next: ONE guided McAfee-off session (docs/QA.md, "Guided session for v1.0"): run the checks, capture screenshots into docs/media, run `tools/bench.ps1 -Runs 3`, then fill RELEASE_REPORT.md numbers, tag `v1.0.0` (the workflow creates a draft release), apply for SignPath (docs/SIGNING.md) and submit the antivirus forms.
+
+### Per-monitor bars (PR feat/multimonitor)
+- Built: `monitors/` (pure plan + diff + work-area restore planning + follow tracker; runtime MonitorBars), `dock.on` in Settings, secondary menu bars (app menus + clock), Docks on every monitor or following the pointer, hot-plug / resolution / DPI / primary-change handling (debounced WM_DISPLAYCHANGE), state.json records extra appbars and late monitors; restore uses the same pure rules.
+- Tests: monitor_layout_test (61 checks, simulated sets). Switch gate unchanged (test profile creates no extra bars). **Not verified on real multi-monitor hardware.**

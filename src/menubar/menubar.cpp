@@ -288,9 +288,11 @@ void MenuBar::Layout() {
         x -= tw + tm::kTitleGap;
     };
     place(L"clock", clockText_);
-    place(L"control", L"\u2630");  // Control Center
-    place(L"overflow", L"\u22EF");
-    for (const auto& s : status_) place(s.id, s.text);
+    if (!secondary_) {  // a secondary monitor's bar shows the app menus and the clock; the system items live on the primary bar
+        place(L"control", L"\u2630");  // Control Center
+        place(L"overflow", L"\u22EF");
+        for (const auto& s : status_) place(s.id, s.text);
+    }
     LayoutTitles();
 }
 

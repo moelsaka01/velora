@@ -1,5 +1,7 @@
 #include "switch/taskbar.h"
 
+#include "monitors/monitor_layout.h"
+
 #include <shellapi.h>
 
 #include <algorithm>
@@ -148,30 +150,32 @@ std::vector<CurrentMonitor> CurrentMonitors() {
     return current;
 }
 
-// The recorded work area of `rec` if it is still meaningful for the monitor now
-// present under the same name (it exists, the rect is valid and fits the monitor).
-bool RecordedWorkArea(const MonitorState& rec, const std::vector<CurrentMonitor>& current, RECT* want,
-                      const CurrentMonitor** cur) {
-    auto it = std::find_if(current.begin(), current.end(), [&](const CurrentMonitor& c) { return c.name == rec.deviceName; });
-    if (it == current.end()) return false;
-    RECT w{rec.workArea.left, rec.workArea.top, rec.workArea.right, rec.workArea.bottom};
-    if (w.right <= w.left || w.bottom <= w.top) return false;
-    RECT inter;
-    if (!IntersectRect(&inter, &w, &it->mon) || !EqualRect(&inter, &w)) return false;  // layout changed: leave alone
-    *want = w;
-    *cur = &*it;
-    return true;
+std::vector<monitors::MonitorDesc> AsDescs(const std::vector<CurrentMonitor>& current) {
+    std::vector<monitors::MonitorDesc> out;
+    for (const auto& c : current) {
+        monitors::MonitorDesc d;
+        d.id = c.name;
+        d.rect = {c.mon.left, c.mon.top, c.mon.right, c.mon.bottom};
+        d.work = {c.work.left, c.work.top, c.work.right, c.work.bottom};
+        out.push_back(std::move(d));
+    }
+    return out;
+}
+
+// Pure rules in monitors::PlanWorkAreaRestore (unit-tested with simulated monitor sets).
+std::vector<monitors::WorkFix> WorkFixes(const SwitchState& state) {
+    std::vector<monitors::RecordedWork> rec;
+    for (const auto& m : state.monitors)
+        rec.push_back({m.deviceName, {m.workArea.left, m.workArea.top, m.workArea.right, m.workArea.bottom}});
+    return monitors::PlanWorkAreaRestore(rec, AsDescs(CurrentMonitors()));
 }
 
 }  // namespace
 
 int ReclaimWorkAreas(const SwitchState& state) {
     int changed = 0;
-    auto current = CurrentMonitors();
-    for (const auto& rec : state.monitors) {
-        RECT want;
-        const CurrentMonitor* cur = nullptr;
-        if (!RecordedWorkArea(rec, current, &want, &cur) || EqualRect(&want, &cur->work)) continue;
+    for (const auto& fix : WorkFixes(state)) {
+        RECT want{fix.want.left, fix.want.top, fix.want.right, fix.want.bottom};
         if (SystemParametersInfoW(SPI_SETWORKAREA, 0, &want, SPIF_SENDCHANGE)) {
             ++changed;
             log::Info("reclaimed work area on a monitor");
@@ -186,15 +190,7 @@ bool AnyWorkAreaReserved() {
     return false;
 }
 
-bool WorkAreasMatch(const SwitchState& state) {
-    auto current = CurrentMonitors();
-    for (const auto& rec : state.monitors) {
-        RECT want;
-        const CurrentMonitor* cur = nullptr;
-        if (RecordedWorkArea(rec, current, &want, &cur) && !EqualRect(&want, &cur->work)) return false;
-    }
-    return true;
-}
+bool WorkAreasMatch(const SwitchState& state) { return WorkFixes(state).empty(); }
 
 std::wstring CurrentWallpaper() {
     wchar_t buf[MAX_PATH * 2] = {};

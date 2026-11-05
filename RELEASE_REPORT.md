@@ -10,7 +10,7 @@ Direction: v1.0 = **Level 1**, a blend of Windows and macOS (no injection). Leve
 |---|---|---|---|
 | switch / watchdog / recovery | G1 (safety gate) | Day-2 gate 117/117 locally (2026-11-01, after #34-#38) and in CI on every PR; the cold-start flake was fixed in #58 | re-run by hand in the guided session; Explorer restart on other Windows builds; 2-3 monitors |
 | windows tracking | G1 | window_tracker_test | cloaked (UWP) windows, a real elevated window |
-| dock | G1 (primary monitor) | dock_test, earlier live checks | per-monitor Docks: **not built** (below G1 for "per-monitor"); jump lists, live thumbnails |
+| dock | G1 (per-monitor built, not verified on real multi-monitor hardware) | dock_test, earlier live checks on one monitor; `monitors/` plans one menu bar per monitor and a Dock on the primary monitor, on every monitor, or following the pointer (`dock.on`), each its own appbar sized for that monitor's DPI; monitor_layout_test covers 1/2/3 monitors, mixed 100/150/200 %, negative coordinates, primary on the right, hot-plug and primary change | **per-monitor behaviour has only been tested with simulated monitor sets**; jump lists and live thumbnails (G2/G3) not built |
 | menu bar | G1 + app menus tiers 1-2 | menubar_test, app_menu_test, menubar_appmenu_test (CI) | tier 3 fallback menu **not built**; the 20-app MENU_COMPAT table is **not complete** |
 | apps (launcher) | G1 | apps_test, icons_test; game `.url` shortcuts | pages/folders (G2) not built |
 | search | G1 | search_core_test, search_test | everything visual |
@@ -35,7 +35,7 @@ Last recorded (PROGRESS.md, main @ fead1c2, 1 run, 1920x1080 at 150 %): enter 23
 
 ## Known limitations
 
-One Dock and one menu bar (primary monitor only); some apps' menus unreachable; elevated windows cannot be controlled; apps with their own frame may ignore title-bar theming; undocumented/old Windows builds only partly tested (developed on 11 26200); toast capture, virtual desktops, Cmd-style remapping, updater and macOS-app compatibility are not in v1.0; output-device switching opens Windows' Sound settings.
+Per-monitor menu bars and Docks are built but not verified on real multi-monitor hardware; some apps' menus unreachable; elevated windows cannot be controlled; apps with their own frame may ignore title-bar theming; undocumented/old Windows builds only partly tested (developed on 11 26200); toast capture, virtual desktops, Cmd-style remapping, updater and macOS-app compatibility are not in v1.0; output-device switching opens Windows' Sound settings.
 
 ## Not tested (honest list)
 

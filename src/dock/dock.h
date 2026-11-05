@@ -53,6 +53,8 @@ public:
     // Icon sources the Dock itself draws (IconStore::Trim keeps these).
     std::set<std::wstring> IconSources() const;
     void Trim() { host_.Trim(); }
+    // Another Dock (one per monitor) changed the pinned list: read it again.
+    void ReloadPinned();
 
 private:
     bool OnMessage(HWND, UINT, WPARAM, LPARAM, LRESULT&);

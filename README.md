@@ -60,7 +60,7 @@ Packaging (Inno Setup 6 and the WiX CLI) is done by `.github/workflows/release.y
 
 ## Limitations
 
-See [docs/PARITY.md](docs/PARITY.md), [docs/MENU_COMPAT.md](docs/MENU_COMPAT.md) and [docs/THEMING_COMPAT.md](docs/THEMING_COMPAT.md). In short: one Dock and one menu bar on the primary monitor; some apps' menus cannot be read; elevated windows cannot be controlled from a normal shell; apps that draw their own frame may ignore title-bar theming; notifications (toast capture), virtual desktops and Cmd-style key remapping are not part of v1.0; output-device switching in Control Center opens Windows' Sound settings.
+See [docs/PARITY.md](docs/PARITY.md), [docs/MENU_COMPAT.md](docs/MENU_COMPAT.md) and [docs/THEMING_COMPAT.md](docs/THEMING_COMPAT.md). In short: a menu bar on every monitor and a Dock on the primary, every or the pointer's monitor (built and tested with simulated monitor sets, not yet verified on real multi-monitor hardware); some apps' menus cannot be read; elevated windows cannot be controlled from a normal shell; apps that draw their own frame may ignore title-bar theming; notifications (toast capture), virtual desktops and Cmd-style key remapping are not part of v1.0; output-device switching in Control Center opens Windows' Sound settings.
 
 ## Roadmap
 

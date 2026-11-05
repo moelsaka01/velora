@@ -111,6 +111,12 @@ void AppBar::Reposition() {
     if (registered_) SetPos();
 }
 
+void AppBar::MoveToMonitor(HMONITOR monitor) {
+    if (!monitor) return;
+    monitor_ = monitor;
+    if (registered_) SetPos();
+}
+
 void AppBar::SetPos() {
     if (inSetPos_ || !hwnd_) return;
     inSetPos_ = true;

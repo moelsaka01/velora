@@ -47,6 +47,8 @@ public:
     bool Reregister();
     // Monitor/DPI change.
     void Reposition();
+    // Moves the bar to another monitor (primary changed, Dock follows the pointer): the reservation moves with it.
+    void MoveToMonitor(HMONITOR monitor);
 
     bool IsRegistered() const { return registered_; }
     int RegistrationCount() const { return registrations_; }

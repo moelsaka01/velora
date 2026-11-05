@@ -29,6 +29,11 @@ public:
     // appbar always exists; the Dock appbar only when SetDockOptions was called.
     void SetMenuBarOptions(AppBarOptions o) { menuBarOptions_ = std::move(o); }
     void SetDockOptions(AppBarOptions o, float reservedDip) { dockOptions_ = std::move(o); dockReservedDip_ = reservedDip; dockEnabled_ = true; }
+    // Additional per-monitor bars (monitors/): called when Explorer re-created its taskbar, so they register again too.
+    void SetExtraReregister(std::function<void()> fn) { extraReregister_ = std::move(fn); }
+    // Records the extra bars' windows (so recovery can ABM_REMOVE them) and the work areas of monitors that were not there at
+    // Enter (so every monitor's work area is restored on exit, crash and --restore). Saved to state.json at once.
+    void RecordExtras(const std::vector<HWND>& extraBars, const std::vector<MonitorState>& newMonitors);
     AppBar& MenuBarBar() { return bar_; }
     AppBar& DockBar() { return dock_; }
 
@@ -79,6 +84,7 @@ private:
     int rehides_ = 0;
     bool autoHideFallback_ = false;
     std::function<void()> onFatal_;
+    std::function<void()> extraReregister_;
 };
 
 }  // namespace velora::sw

@@ -144,8 +144,16 @@ bool SavePinned(const std::vector<DockApp>& pinned) {
     return !ec;
 }
 
+namespace {
+std::vector<Dock*>& AllDocks() {
+    static std::vector<Dock*> docks;
+    return docks;
+}
+}  // namespace
+
 Dock::Dock(EventBus& bus, win::WindowTracker& tracker, Actions actions)
     : bus_(bus), tracker_(tracker), actions_(std::move(actions)) {
+    AllDocks().push_back(this);
     pinned_ = LoadPinned();
     magnify_ = MagnificationSetting();
     tokens_.push_back(bus_.Subscribe(EventType::SettingsChanged, [this](const Event&) {
@@ -162,6 +170,7 @@ Dock::Dock(EventBus& bus, win::WindowTracker& tracker, Actions actions)
 }
 
 Dock::~Dock() {
+    std::erase(AllDocks(), this);
     for (auto t : tokens_) bus_.Unsubscribe(t);
     Detach();
 }
@@ -256,6 +265,11 @@ void Dock::Detach() {
     hwnd_ = nullptr;
     bar_ = nullptr;
     regionSet_ = false;
+}
+
+void Dock::ReloadPinned() {
+    pinned_ = LoadPinned();
+    ScheduleRebuild();
 }
 
 void Dock::ScheduleRebuild() {
@@ -633,6 +647,8 @@ void Dock::Pin(const DockApp& app, bool pin) {
         std::erase_if(pinned_, [&](const DockApp& a) { return !a.internalApps && a.name == app.name && a.launch == app.launch; });
     }
     if (!SavePinned(pinned_)) log::Warn("dock: could not save the pinned list");
+    for (Dock* other : AllDocks())
+        if (other != this) other->ReloadPinned();  // one Dock per monitor share one list
     Rebuild();
 }
 

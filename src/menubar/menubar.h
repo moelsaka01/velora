@@ -52,6 +52,8 @@ public:
     MenuBar& operator=(const MenuBar&) = delete;
 
     // Hooks for SwitchManager::SetMenuBarOptions; call before Enter().
+    // A bar on a monitor other than the primary one: app menus and clock only (call before Attach).
+    void SetSecondary(bool secondary) { secondary_ = secondary; }
     sw::AppBarOptions Options();
     // The appbar window exists now (Entered): create the render target and draw.
     void Attach(HWND hwnd);
@@ -114,6 +116,7 @@ private:
     std::vector<int> pendingPath_;    // UIA path of the submenu being fetched
     std::wstring pendingLabel_;
     bool reopening_ = false;
+    bool secondary_ = false;
     int popupTitle_ = -1;  // the title whose popup is open (Update() is only valid for the same title)
     HWND targetOverride_ = nullptr;
 
