@@ -60,6 +60,9 @@ public:
     // Starts the background scan/watch thread once; `notify` gets `message` when the index changed.
     void StartBackground(HWND notify, UINT message);
     std::vector<AppEntry> Snapshot() const;
+    // Snapshot() through the launcher transform (the Apple group, when enabled); the Dock keeps using Snapshot().
+    std::vector<AppEntry> SnapshotForLauncher() const;
+    void SetLauncherTransform(std::function<std::vector<AppEntry>(std::vector<AppEntry>)> fn);
     unsigned Generation() const;
 
 private:
@@ -73,6 +76,7 @@ private:
     bool started_ = false;
     HWND notify_ = nullptr;
     UINT message_ = 0;
+    std::function<std::vector<AppEntry>(std::vector<AppEntry>)> launcherTransform_;
 };
 
 }  // namespace velora::apps

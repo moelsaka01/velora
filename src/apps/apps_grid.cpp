@@ -100,7 +100,7 @@ void AppsGrid::Show() {
     render::ApplyBackdrop(hwnd_, render::Backdrop::None, ui::SystemTheme());  // the panel draws its own material
     render::ApplyRoundedCorners(hwnd_, false);
 
-    apps_ = AppIndex::Get().Snapshot();
+    apps_ = AppIndex::Get().SnapshotForLauncher();
     query_.clear();
     selected_ = 0;
     hover_ = -1;
@@ -160,7 +160,7 @@ void AppsGrid::Hide() {
 
 void AppsGrid::OnDataChanged() {
     if (!hwnd_) return;
-    auto fresh = AppIndex::Get().Snapshot();
+    auto fresh = AppIndex::Get().SnapshotForLauncher();
     if (fresh != apps_) {
         apps_ = std::move(fresh);
         Refilter();
