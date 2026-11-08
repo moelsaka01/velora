@@ -48,7 +48,7 @@ jobs:
       - name: Upload unsigned binaries (input for signing)
         if: ${{ env.SIGNING == 'true' }}
         id: upload-binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: velora-binaries-unsigned
           path: dist/stage/*.exe
@@ -90,7 +90,7 @@ jobs:
       - name: Upload unsigned installers (input for signing)
         if: ${{ env.SIGNING == 'true' }}
         id: upload-installers
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: velora-installers-unsigned
           path: |
@@ -140,7 +140,7 @@ jobs:
         shell: pwsh
         run: pwsh tools/package.ps1 -Checksums
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: velora-release-${{ env.VERSION }}
           path: |
